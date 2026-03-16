@@ -60,7 +60,7 @@ echo "=================================================\n\n";
 $scraper = new MecspeScraper(verbose: true);
 
 try {
-    $exhibitors = $scraper->scrape($startPage, $endPage);
+    $exhibitors = $scraper->scrape($startPage, $endPage, $outputDir);
 
     $jsonPath = "{$outputDir}/mecspe_espositori_{$timestamp}.json";
     $csvPath  = "{$outputDir}/mecspe_espositori_{$timestamp}.csv";

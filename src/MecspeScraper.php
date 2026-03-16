@@ -34,7 +34,7 @@ class MecspeScraper
     // Public API
     // -------------------------------------------------------------------------
 
-    public function scrape(int $startPage = 1, int $endPage = 0): array
+    public function scrape(int $startPage = 1, int $endPage = 0, string $outputDir = ''): array
     {
         $lastPage = $endPage > 0 ? $endPage : $this->detectLastPage();
 
@@ -51,6 +51,12 @@ class MecspeScraper
                 $detail = $this->fetchDetailPage($card['url']);
                 $this->exhibitors[] = array_merge($card, $detail);
                 usleep(self::DELAY_MS * 1000);
+            }
+
+            // Save incrementally after each page
+            if ($outputDir !== '') {
+                $this->saveJson($outputDir . '/mecspe_espositori_partial.json');
+                $this->saveCsv($outputDir . '/mecspe_espositori_partial.csv');
             }
         }
 
