@@ -277,6 +277,14 @@ class MecspeScraper
             $data['phone']   = $phone !== '' ? $phone : 'numero mancante';
         }
 
+        // Phone shown on page (text-white span, higher priority than data-store)
+        $crawler->filter('span.text-white')->each(function (Crawler $span) use (&$data) {
+            $t = trim($span->text(''));
+            if (preg_match('/^\+?[\d\s]{6,}$/', $t)) {
+                $data['phone'] = $t;
+            }
+        });
+
         // Fallback: mailto link
         if ($data['email'] === 'mail mancante') {
             $crawler->filter('a[href^="mailto:"]')->each(function (Crawler $a) use (&$data) {
@@ -287,9 +295,9 @@ class MecspeScraper
         }
 
         // Fallback: tel link
-        if ($data['phone'] === '') {
+        if ($data['phone'] === 'numero mancante') {
             $crawler->filter('a[href^="tel:"]')->each(function (Crawler $a) use (&$data) {
-                if ($data['phone'] === '') {
+                if ($data['phone'] === 'numero mancante') {
                     $data['phone'] = str_replace('tel:', '', $a->attr('href'));
                 }
             });
