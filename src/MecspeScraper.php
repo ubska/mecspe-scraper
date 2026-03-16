@@ -256,8 +256,8 @@ class MecspeScraper
         $data = [
             'description'       => '',
             'services_products' => '',
-            'phone'             => '',   // requires login — always left empty
-            'email'             => '',
+            'phone'             => 'numero mancante',
+            'email'             => 'mail mancante',
             'address'           => '',
             'website'           => '',
         ];
@@ -266,14 +266,15 @@ class MecspeScraper
         if (preg_match('/data-store="([^"]+)"/', $html, $m)) {
             $json    = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $store   = json_decode($json, true) ?? [];
-            $data['email']   = $store['email']        ?? '';
+            $email   = trim($store['email'] ?? '');
+            $data['email']   = $email !== '' ? $email : 'mail mancante';
             $data['address'] = $store['full_address'] ?? $store['addressLabel'] ?? '';
         }
 
         // Fallback: mailto link
-        if ($data['email'] === '') {
+        if ($data['email'] === 'mail mancante') {
             $crawler->filter('a[href^="mailto:"]')->each(function (Crawler $a) use (&$data) {
-                if ($data['email'] === '') {
+                if ($data['email'] === 'mail mancante') {
                     $data['email'] = str_replace('mailto:', '', $a->attr('href'));
                 }
             });
