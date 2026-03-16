@@ -273,6 +273,8 @@ class MecspeScraper
             $email   = trim($store['email'] ?? '');
             $data['email']   = $email !== '' ? $email : 'mail mancante';
             $data['address'] = $store['full_address'] ?? $store['addressLabel'] ?? '';
+            $phone   = trim($store['phone'] ?? '');
+            $data['phone']   = $phone !== '' ? $phone : 'numero mancante';
         }
 
         // Fallback: mailto link
