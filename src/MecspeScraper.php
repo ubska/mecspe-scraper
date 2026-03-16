@@ -235,7 +235,7 @@ class MecspeScraper
     {
         try {
             $html = $this->get($url);
-            return $this->parseDetailPage($html);
+            return $this->parseDetailPage($html, $url);
         } catch (\Throwable $e) {
             $this->log("    ERROR fetching detail: " . $e->getMessage());
             return [];
@@ -253,7 +253,7 @@ class MecspeScraper
      * NOTE: phone is intentionally left empty — the real number is loaded
      * dynamically by Livewire after authentication and is not in the static HTML.
      */
-    private function parseDetailPage(string $html): array
+    private function parseDetailPage(string $html, string $url = ''): array
     {
         $crawler = new Crawler($html);
 
@@ -277,13 +277,24 @@ class MecspeScraper
             $data['phone']   = $phone !== '' ? $phone : 'numero mancante';
         }
 
-        // Phone shown on page (text-white span, higher priority than data-store)
-        $crawler->filter('span.text-white')->each(function (Crawler $span) use (&$data) {
-            $t = trim($span->text(''));
-            if (preg_match('/^\+?[\d\s]{6,}$/', $t)) {
-                $data['phone'] = $t;
+        // Phone via POST to /portal/{id}/phone (loaded by Vue on click)
+        $phoneForm = $crawler->filter('form[action*="/portal/"][action*="/phone"]');
+        if ($phoneForm->count() > 0) {
+            $phoneEndpoint = $phoneForm->first()->attr('action');
+            try {
+                $resp = $this->client->post($phoneEndpoint, [
+                    'form_params' => ['referral' => $url ?? ''],
+                    'headers'     => ['X-Requested-With' => 'XMLHttpRequest'],
+                ]);
+                $json = json_decode((string) $resp->getBody(), true);
+                $p    = trim($json['data']['phone'] ?? $json['msg'] ?? '');
+                if ($p !== '') {
+                    $data['phone'] = $p;
+                }
+            } catch (\Throwable $e) {
+                // keep fallback value
             }
-        });
+        }
 
         // Fallback: mailto link
         if ($data['email'] === 'mail mancante') {
