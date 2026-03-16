@@ -26,7 +26,7 @@ class MecspeScraper
                 'Accept'          => 'text/html,application/xhtml+xml',
                 'Accept-Language' => 'it-IT,it;q=0.9,en;q=0.8',
             ],
-            'verify' => true,
+            'verify' => false,
         ]);
     }
 
