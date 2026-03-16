@@ -77,6 +77,10 @@ class MecspeScraper
         }
 
         $fp = fopen($path, 'w');
+        if ($fp === false) {
+            $this->log("[WARNING] Impossibile scrivere il CSV (file in uso?), salto il CSV.");
+            return;
+        }
         fputs($fp, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel opens correctly
 
         $headers = [
