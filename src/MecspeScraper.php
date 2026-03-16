@@ -241,10 +241,13 @@ class MecspeScraper
     /**
      * Key detail page elements:
      *
-     *   data-store="…JSON…"  → phone, email, full_address (most reliable)
+     *   data-store="…JSON…"  → email, full_address (phone excluded: loaded via login only)
      *   .tipi-readmore p.section-body  → description
      *   #servizi span.tipi-tag         → services & products (comma list)
      *   #retailWebsite a[href]         → company website
+     *
+     * NOTE: phone is intentionally left empty — the real number is loaded
+     * dynamically by Livewire after authentication and is not in the static HTML.
      */
     private function parseDetailPage(string $html): array
     {
@@ -253,17 +256,16 @@ class MecspeScraper
         $data = [
             'description'       => '',
             'services_products' => '',
-            'phone'             => '',
+            'phone'             => '',   // requires login — always left empty
             'email'             => '',
             'address'           => '',
             'website'           => '',
         ];
 
-        // --- Contact data from JSON store ---
+        // --- Contact data from JSON store (email + address only) ---
         if (preg_match('/data-store="([^"]+)"/', $html, $m)) {
             $json    = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $store   = json_decode($json, true) ?? [];
-            $data['phone']   = $store['phone']        ?? '';
             $data['email']   = $store['email']        ?? '';
             $data['address'] = $store['full_address'] ?? $store['addressLabel'] ?? '';
         }
