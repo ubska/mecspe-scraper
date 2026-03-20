@@ -2,11 +2,12 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Espone i veicoli tramite WordPress REST API.
+ * REST API del plugin Mecspe Trucks.
  *
- * Endpoints disponibili:
- *   GET /wp-json/mecspe/v1/trucks          – lista veicoli (con filtri opzionali)
- *   GET /wp-json/mecspe/v1/trucks/{id}     – singolo veicolo
+ * Endpoint disponibili:
+ *   POST /wp-json/mecspe/v1/receive          – riceve XML push dal gestionale
+ *   GET  /wp-json/mecspe/v1/trucks           – lista veicoli (con filtri)
+ *   GET  /wp-json/mecspe/v1/trucks/{id}      – singolo veicolo
  */
 class Mecspe_Trucks_Api {
 
@@ -17,6 +18,15 @@ class Mecspe_Trucks_Api {
 	}
 
 	public function register_routes(): void {
+
+		// ---- Ricezione push dal gestionale --------------------------------
+		register_rest_route( self::NAMESPACE, '/receive', [
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => [ $this, 'receive_from_gestionale' ],
+			'permission_callback' => '__return_true', // auth interna via token XML
+		] );
+
+		// ---- Lista veicoli ------------------------------------------------
 		register_rest_route( self::NAMESPACE, '/trucks', [
 			'methods'             => WP_REST_Server::READABLE,
 			'callback'            => [ $this, 'get_trucks' ],
@@ -24,6 +34,7 @@ class Mecspe_Trucks_Api {
 			'args'                => $this->collection_args(),
 		] );
 
+		// ---- Singolo veicolo ----------------------------------------------
 		register_rest_route( self::NAMESPACE, '/trucks/(?P<id>\d+)', [
 			'methods'             => WP_REST_Server::READABLE,
 			'callback'            => [ $this, 'get_truck' ],
@@ -39,7 +50,96 @@ class Mecspe_Trucks_Api {
 	}
 
 	// ------------------------------------------------------------------ //
-	//  Handlers
+	//  Ricezione XML dal gestionale
+	// ------------------------------------------------------------------ //
+
+	public function receive_from_gestionale( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+
+		// Il gestionale manda un form POST con campo "xml"
+		$raw_xml = $request->get_param( 'xml' );
+		if ( empty( $raw_xml ) ) {
+			// Prova anche il body raw (alcuni client mandano XML diretto)
+			$raw_xml = $request->get_body();
+		}
+
+		if ( empty( $raw_xml ) ) {
+			return new WP_Error( 'no_xml', 'Nessun payload XML ricevuto.', [ 'status' => 400 ] );
+		}
+
+		// Parsing XML sicuro
+		libxml_use_internal_errors( true );
+		$xml = simplexml_load_string( $raw_xml );
+		if ( false === $xml ) {
+			return new WP_Error( 'invalid_xml', 'XML non valido: ' . libxml_get_last_error()->message, [ 'status' => 400 ] );
+		}
+
+		// Validazione token
+		$expected_token = get_option( 'mecspe_trucks_frontend_token', '' );
+		$received_token = (string) ( $xml->token ?? '' );
+
+		if ( empty( $expected_token ) ) {
+			return new WP_Error( 'no_token_configured', 'Token non configurato in WordPress. Vai in Prodotti → Sync Gestionale.', [ 'status' => 500 ] );
+		}
+		if ( ! hash_equals( $expected_token, $received_token ) ) {
+			return new WP_Error( 'invalid_token', 'Token non valido.', [ 'status' => 401 ] );
+		}
+
+		// Cancellazione
+		if ( isset( $xml->delete ) ) {
+			$gestionale_id = sanitize_text_field( (string) $xml->delete->id_gestionale );
+			if ( empty( $gestionale_id ) ) {
+				return new WP_Error( 'no_id', 'id_gestionale mancante nel blocco <delete>.', [ 'status' => 400 ] );
+			}
+			$deleted = Mecspe_Truck_Importer::delete_truck( $gestionale_id );
+			return rest_ensure_response( [
+				'action'        => 'deleted',
+				'id_gestionale' => $gestionale_id,
+				'post_deleted'  => $deleted,
+			] );
+		}
+
+		// Upsert (insert o update)
+		if ( isset( $xml->truck ) ) {
+			$truck_data = $this->xml_to_array( $xml->truck );
+			$post_id    = Mecspe_Truck_Importer::upsert_truck( $truck_data );
+
+			if ( is_wp_error( $post_id ) ) {
+				return $post_id;
+			}
+
+			return rest_ensure_response( [
+				'action'        => 'upserted',
+				'id_gestionale' => $truck_data['id_gestionale'] ?? '',
+				'post_id'       => $post_id,
+			] );
+		}
+
+		return new WP_Error( 'unknown_action', 'L\'XML deve contenere <truck> o <delete>.', [ 'status' => 400 ] );
+	}
+
+	/**
+	 * Converte un SimpleXMLElement in array associativo piatto.
+	 */
+	private function xml_to_array( SimpleXMLElement $el ): array {
+		$data = [];
+		foreach ( $el as $key => $value ) {
+			$children = $value->children();
+			if ( count( $children ) > 0 ) {
+				// Nodo con figli → array (es. <items><item>...</item></item>)
+				$rows = [];
+				foreach ( $children as $child ) {
+					$rows[] = $this->xml_to_array( $child );
+				}
+				$data[ (string) $key ] = $rows;
+			} else {
+				$data[ (string) $key ] = (string) $value;
+			}
+		}
+		return $data;
+	}
+
+	// ------------------------------------------------------------------ //
+	//  GET /trucks
 	// ------------------------------------------------------------------ //
 
 	public function get_trucks( WP_REST_Request $request ): WP_REST_Response {
@@ -53,7 +153,6 @@ class Mecspe_Trucks_Api {
 			'meta_query'     => [ 'relation' => 'AND' ],
 		];
 
-		// Filtro marca
 		if ( $marca = $request->get_param( 'marca' ) ) {
 			$query_args['meta_query'][] = [
 				'key'     => 'marca_prodotto',
@@ -61,8 +160,6 @@ class Mecspe_Trucks_Api {
 				'compare' => 'LIKE',
 			];
 		}
-
-		// Filtro modello
 		if ( $modello = $request->get_param( 'modello' ) ) {
 			$query_args['meta_query'][] = [
 				'key'     => 'modello_prodotto',
@@ -70,8 +167,6 @@ class Mecspe_Trucks_Api {
 				'compare' => 'LIKE',
 			];
 		}
-
-		// Filtro prezzo
 		if ( $prezzo_min = $request->get_param( 'prezzo_min' ) ) {
 			$query_args['meta_query'][] = [
 				'key'     => 'prezzo_prodotto',
@@ -88,8 +183,6 @@ class Mecspe_Trucks_Api {
 				'type'    => 'NUMERIC',
 			];
 		}
-
-		// Filtro km
 		if ( $km_max = $request->get_param( 'km_max' ) ) {
 			$query_args['meta_query'][] = [
 				'key'     => 'km_percorsi_prodotto',
@@ -98,8 +191,6 @@ class Mecspe_Trucks_Api {
 				'type'    => 'NUMERIC',
 			];
 		}
-
-		// Filtro veicolo_pronto
 		if ( null !== $request->get_param( 'veicolo_pronto' ) ) {
 			$query_args['meta_query'][] = [
 				'key'     => 'veicolo_pronto_prodotto',
@@ -109,29 +200,27 @@ class Mecspe_Trucks_Api {
 		}
 
 		$query = new WP_Query( $query_args );
-		$total = $query->found_posts;
 		$data  = [];
-
 		foreach ( $query->posts as $post ) {
 			$data[] = $this->format_truck( $post );
 		}
 
 		$response = rest_ensure_response( $data );
-		$response->header( 'X-WP-Total', $total );
+		$response->header( 'X-WP-Total', $query->found_posts );
 		$response->header( 'X-WP-TotalPages', $query->max_num_pages );
 
 		return $response;
 	}
 
+	// ------------------------------------------------------------------ //
+	//  GET /trucks/{id}
+	// ------------------------------------------------------------------ //
+
 	public function get_truck( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$post = get_post( $request->get_param( 'id' ) );
 
 		if ( ! $post || $post->post_type !== 'prodotti' || $post->post_status !== 'publish' ) {
-			return new WP_Error(
-				'mecspe_truck_not_found',
-				__( 'Veicolo non trovato.', 'mecspe-trucks' ),
-				[ 'status' => 404 ]
-			);
+			return new WP_Error( 'mecspe_truck_not_found', 'Veicolo non trovato.', [ 'status' => 404 ] );
 		}
 
 		return rest_ensure_response( $this->format_truck( $post, true ) );
@@ -194,37 +283,19 @@ class Mecspe_Trucks_Api {
 	}
 
 	// ------------------------------------------------------------------ //
-	//  Argomenti collection
+	//  Args collection
 	// ------------------------------------------------------------------ //
 
 	private function collection_args(): array {
 		return [
-			'page'           => [
-				'default'           => 1,
-				'sanitize_callback' => 'absint',
-			],
-			'per_page'       => [
-				'default'           => 20,
-				'sanitize_callback' => 'absint',
-			],
-			'marca'          => [
-				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'modello'        => [
-				'sanitize_callback' => 'sanitize_text_field',
-			],
-			'prezzo_min'     => [
-				'sanitize_callback' => 'absint',
-			],
-			'prezzo_max'     => [
-				'sanitize_callback' => 'absint',
-			],
-			'km_max'         => [
-				'sanitize_callback' => 'absint',
-			],
-			'veicolo_pronto' => [
-				'sanitize_callback' => fn( $v ) => (bool) $v,
-			],
+			'page'           => [ 'default' => 1,  'sanitize_callback' => 'absint' ],
+			'per_page'       => [ 'default' => 20, 'sanitize_callback' => 'absint' ],
+			'marca'          => [ 'sanitize_callback' => 'sanitize_text_field' ],
+			'modello'        => [ 'sanitize_callback' => 'sanitize_text_field' ],
+			'prezzo_min'     => [ 'sanitize_callback' => 'absint' ],
+			'prezzo_max'     => [ 'sanitize_callback' => 'absint' ],
+			'km_max'         => [ 'sanitize_callback' => 'absint' ],
+			'veicolo_pronto' => [ 'sanitize_callback' => fn( $v ) => (bool) $v ],
 		];
 	}
 }
