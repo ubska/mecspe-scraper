@@ -12,7 +12,7 @@ class Mecspe_Trucks_Admin {
 
 	public function add_menu() {
 		add_submenu_page(
-			'edit.php?post_type=prodotto',
+			'edit.php?post_type=prodotti',
 			__( 'Impostazioni Sync', 'mecspe-trucks' ),
 			__( 'Sync Gestionale', 'mecspe-trucks' ),
 			'manage_options',
@@ -136,7 +136,7 @@ class Mecspe_Trucks_Admin {
 
 		wp_redirect( add_query_arg(
 			[ 'page' => 'mecspe-trucks-settings', 'synced' => '1' ],
-			admin_url( 'edit.php?post_type=prodotto' )
+			admin_url( 'edit.php?post_type=prodotti' )
 		) );
 		exit;
 	}

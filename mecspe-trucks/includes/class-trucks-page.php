@@ -85,7 +85,7 @@ class Mecspe_Trucks_Page {
 
 	private function query_trucks( array $args ): array {
 		$query_args = [
-			'post_type'      => 'prodotto',
+			'post_type'      => 'prodotti',
 			'post_status'    => 'publish',
 			'posts_per_page' => -1,
 			'orderby'        => 'title',

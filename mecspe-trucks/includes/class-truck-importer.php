@@ -48,7 +48,7 @@ class Mecspe_Truck_Importer {
 			if ( ! $post_id ) {
 				$post_id = wp_insert_post( [
 					'post_title'  => $title,
-					'post_type'   => 'prodotto',
+					'post_type'   => 'prodotti',
 					'post_status' => 'publish',
 				] );
 				$is_new = true;
@@ -103,7 +103,7 @@ class Mecspe_Truck_Importer {
 	 */
 	private static function find_post_by_gestionale_id( string $gestionale_id ): ?int {
 		$posts = get_posts( [
-			'post_type'      => 'prodotto',
+			'post_type'      => 'prodotti',
 			'posts_per_page' => 1,
 			'meta_key'       => '_mecspe_gestionale_id',
 			'meta_value'     => $gestionale_id,
