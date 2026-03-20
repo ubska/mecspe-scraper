@@ -18,9 +18,11 @@ require_once MECSPE_TRUCKS_PATH . 'includes/class-admin.php';
 require_once MECSPE_TRUCKS_PATH . 'includes/class-gestionale-connector.php';
 require_once MECSPE_TRUCKS_PATH . 'includes/class-truck-importer.php';
 require_once MECSPE_TRUCKS_PATH . 'includes/class-trucks-page.php';
+require_once MECSPE_TRUCKS_PATH . 'includes/class-api.php';
 
 new Mecspe_Trucks_Admin();
 new Mecspe_Trucks_Page();
+new Mecspe_Trucks_Api();
 
 // Cron: sync giornaliero
 add_action( 'mecspe_trucks_sync_event', [ 'Mecspe_Truck_Importer', 'run_sync' ] );
