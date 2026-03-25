@@ -226,40 +226,38 @@ function mecspe_render_archive( int $per_page = 12 ) {
 function mecspe_render_cards( WP_Query $query ) {
     if ( ! $query->have_posts() ) {
         echo '<div class="mecspe-no-results">'
-           . '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
            . '<p>Nessun prodotto trovato con i filtri selezionati.</p>'
-           . '<p><small>Prova a rimuovere qualche filtro.</small></p>'
+           . '<p>Prova a rimuovere qualche filtro.</p>'
            . '</div>';
         return;
     }
 
     while ( $query->have_posts() ) {
         $query->the_post();
-        $id   = get_the_ID();
+        $id = get_the_ID();
 
         /* Recupera tassonomie */
-        $tax_filters = mecspe_get_tax_filters();
-        $tax_badges  = [];
-        foreach ( $tax_filters as $tax_slug => $tax_data ) {
-            $terms = get_the_terms( $id, $tax_slug );
-            if ( $terms && ! is_wp_error( $terms ) ) {
-                $tax_badges = array_merge( $tax_badges, wp_list_pluck( $terms, 'name' ) );
-            }
-        }
+        /* Leggi meta del camion inviati dal gestionale */
+        $modello  = get_post_meta( $id, 'modello', true );
+        $marca    = get_post_meta( $id, 'marca', true );
+        $km       = get_post_meta( $id, 'km_percorsi', true );
+        $anno     = get_post_meta( $id, 'prima_immatricolazione', true );
+        $cavalli  = get_post_meta( $id, 'cavalli', true );
+        $prezzo   = get_post_meta( $id, 'prezzo', true );
+        $trattativa = get_post_meta( $id, 'trattativa_riservata', true );
+        $pronto   = get_post_meta( $id, 'veicolo_pronto', true );
 
-        /* Meta comuni */
-        $sito     = get_post_meta( $id, '_mecspe_sito_web', true )
-                 ?: get_post_meta( $id, 'sito_web', true )
-                 ?: get_post_meta( $id, 'website', true );
-        $stand    = get_post_meta( $id, '_mecspe_stand', true )
-                 ?: get_post_meta( $id, 'stand', true );
-        $pad      = get_post_meta( $id, '_mecspe_padiglione', true )
-                 ?: get_post_meta( $id, 'padiglione', true );
+        /* Tassonomie come badge */
+        $tax_badges = [];
+        foreach ( array_keys( mecspe_get_tax_filters() ) as $tax_slug ) {
+            $terms = get_the_terms( $id, $tax_slug );
+            if ( $terms && ! is_wp_error( $terms ) )
+                $tax_badges = array_merge( $tax_badges, wp_list_pluck( $terms, 'name' ) );
+        }
         ?>
         <article class="mecspe-card" id="post-<?php echo $id; ?>">
 
-            <!-- Thumbnail -->
-            <a href="<?php the_permalink(); ?>" class="mecspe-card-thumb-link" tabindex="-1" aria-hidden="true">
+            <a href="<?php the_permalink(); ?>" class="mecspe-card-thumb-link">
                 <div class="mecspe-card-thumb">
                     <?php if ( has_post_thumbnail() ) : ?>
                         <?php the_post_thumbnail( 'medium', [ 'class' => 'mecspe-card-img', 'loading' => 'lazy' ] ); ?>
@@ -267,15 +265,13 @@ function mecspe_render_cards( WP_Query $query ) {
                         <div class="mecspe-card-placeholder">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                                  stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                <path d="M3 9h18M9 21V9"/>
+                                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
                             </svg>
                         </div>
                     <?php endif; ?>
                 </div>
             </a>
 
-            <!-- Body -->
             <div class="mecspe-card-body">
                 <h2 class="mecspe-card-title">
                     <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
@@ -283,53 +279,53 @@ function mecspe_render_cards( WP_Query $query ) {
 
                 <?php if ( ! empty( $tax_badges ) ) : ?>
                 <div class="mecspe-card-tags">
-                    <?php foreach ( array_slice( $tax_badges, 0, 3 ) as $badge ) : ?>
-                    <span class="mecspe-tag"><?php echo esc_html( $badge ); ?></span>
+                    <?php foreach ( array_slice( $tax_badges, 0, 2 ) as $b ) : ?>
+                    <span class="mecspe-tag"><?php echo esc_html( $b ); ?></span>
                     <?php endforeach; ?>
                 </div>
                 <?php endif; ?>
 
-                <?php if ( $pad || $stand ) : ?>
                 <ul class="mecspe-card-specs">
-                    <?php if ( $pad ) : ?>
+                    <?php if ( $anno ) : ?>
                     <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-                        </svg>
-                        Pad. <?php echo esc_html( $pad ); ?>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <strong>Immatricolazione:</strong> <?php echo esc_html( $anno ); ?>
                     </li>
                     <?php endif; ?>
-                    <?php if ( $stand ) : ?>
+                    <?php if ( $km ) : ?>
                     <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                        </svg>
-                        Stand <?php echo esc_html( $stand ); ?>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <strong>KM:</strong> <?php echo esc_html( number_format( (int)$km, 0, ',', '.' ) ); ?> km
+                    </li>
+                    <?php endif; ?>
+                    <?php if ( $cavalli ) : ?>
+                    <li>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        <strong>Cavalli:</strong> <?php echo esc_html( $cavalli ); ?> CV
+                    </li>
+                    <?php endif; ?>
+                    <?php if ( $pronto ) : ?>
+                    <li>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Veicolo pronto
                     </li>
                     <?php endif; ?>
                 </ul>
-                <?php endif; ?>
 
-                <?php if ( has_excerpt() ) : ?>
-                <p class="mecspe-card-excerpt"><?php echo wp_trim_words( get_the_excerpt(), 18 ); ?></p>
+                <?php if ( $prezzo || $trattativa ) : ?>
+                <div class="mecspe-card-price">
+                    <?php if ( $trattativa ) : ?>
+                        Trattativa riservata
+                    <?php elseif ( $prezzo ) : ?>
+                        &euro; <?php echo esc_html( number_format( (int)$prezzo, 0, ',', '.' ) ); ?>
+                        <small>+ IVA</small>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
-            </div><!-- /.mecspe-card-body -->
+            </div>
 
-            <!-- Footer -->
             <div class="mecspe-card-footer">
-                <a href="<?php the_permalink(); ?>" class="mecspe-btn-dettaglio">
-                    Dettaglio
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                    </svg>
-                </a>
-                <?php if ( $sito ) : ?>
-                <a href="<?php echo esc_url( $sito ); ?>" target="_blank" rel="noopener noreferrer"
-                   class="mecspe-btn-sito">Sito web</a>
-                <?php endif; ?>
+                <a href="<?php the_permalink(); ?>" class="mecspe-btn-dettaglio">Scopri di più</a>
             </div>
 
         </article>
