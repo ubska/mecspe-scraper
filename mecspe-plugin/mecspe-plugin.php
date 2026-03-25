@@ -236,24 +236,26 @@ function mecspe_render_cards( WP_Query $query ) {
         $query->the_post();
         $id = get_the_ID();
 
-        /* Recupera tassonomie */
-        /* Leggi meta del camion inviati dal gestionale */
-        $modello  = get_post_meta( $id, 'modello', true );
-        $marca    = get_post_meta( $id, 'marca', true );
-        $km       = get_post_meta( $id, 'km_percorsi', true );
-        $anno     = get_post_meta( $id, 'prima_immatricolazione', true );
-        $cavalli  = get_post_meta( $id, 'cavalli', true );
-        $prezzo   = get_post_meta( $id, 'prezzo', true );
-        $trattativa = get_post_meta( $id, 'trattativa_riservata', true );
-        $pronto   = get_post_meta( $id, 'veicolo_pronto', true );
+        /* Leggi campi ACF del camion */
+        $acf = function_exists( 'get_field' );
+        $km         = $acf ? get_field( 'km_percorsi', $id )         : get_post_meta( $id, 'km_percorsi', true );
+        $anno       = $acf ? get_field( 'prima_immatricolazione', $id): get_post_meta( $id, 'prima_immatricolazione', true );
+        $cavalli    = $acf ? get_field( 'cavalli', $id )              : get_post_meta( $id, 'cavalli', true );
+        $prezzo     = $acf ? get_field( 'prezzo', $id )               : get_post_meta( $id, 'prezzo', true );
+        $trattativa = $acf ? get_field( 'trattativa_in_sede', $id )   : get_post_meta( $id, 'trattativa_in_sede', true );
+        $pronto     = $acf ? get_field( 'veicolo_pronto', $id )       : get_post_meta( $id, 'veicolo_pronto', true );
 
-        /* Tassonomie come badge */
-        $tax_badges = [];
-        foreach ( array_keys( mecspe_get_tax_filters() ) as $tax_slug ) {
-            $terms = get_the_terms( $id, $tax_slug );
-            if ( $terms && ! is_wp_error( $terms ) )
-                $tax_badges = array_merge( $tax_badges, wp_list_pluck( $terms, 'name' ) );
+        /* Marca dal repeater ACF */
+        $marca = '';
+        if ( $acf ) {
+            $marche = get_field( 'marche', $id );
+            if ( ! empty( $marche ) && is_array( $marche ) )
+                $marca = $marche[0]['testo'] ?? '';
         }
+
+        /* Tag come badge (es. "Usato CGT Trucks") */
+        $tags = get_the_terms( $id, 'post_tag' );
+        $tax_badges = ( $tags && ! is_wp_error( $tags ) ) ? wp_list_pluck( $tags, 'name' ) : [];
         ?>
         <article class="mecspe-card" id="post-<?php echo $id; ?>">
 
@@ -273,6 +275,10 @@ function mecspe_render_cards( WP_Query $query ) {
             </a>
 
             <div class="mecspe-card-body">
+                <?php if ( $marca ) : ?>
+                <div class="mecspe-card-brand"><?php echo esc_html( $marca ); ?></div>
+                <?php endif; ?>
+
                 <h2 class="mecspe-card-title">
                     <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
                 </h2>
@@ -287,41 +293,29 @@ function mecspe_render_cards( WP_Query $query ) {
 
                 <ul class="mecspe-card-specs">
                     <?php if ( $anno ) : ?>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        <strong>Immatricolazione:</strong> <?php echo esc_html( $anno ); ?>
-                    </li>
+                    <li><strong>Immatricolazione:</strong> <?php echo esc_html( $anno ); ?></li>
                     <?php endif; ?>
                     <?php if ( $km ) : ?>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        <strong>KM:</strong> <?php echo esc_html( number_format( (int)$km, 0, ',', '.' ) ); ?> km
-                    </li>
+                    <li><strong>KM:</strong> <?php echo esc_html( number_format( (float)str_replace('.','',str_replace(',','',$km)), 0, ',', '.' ) ); ?> km</li>
                     <?php endif; ?>
                     <?php if ( $cavalli ) : ?>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                        <strong>Cavalli:</strong> <?php echo esc_html( $cavalli ); ?> CV
-                    </li>
+                    <li><strong>Cavalli:</strong> <?php echo esc_html( $cavalli ); ?> CV</li>
                     <?php endif; ?>
                     <?php if ( $pronto ) : ?>
-                    <li>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        Veicolo pronto
-                    </li>
+                    <li>&#10003; Veicolo pronto</li>
                     <?php endif; ?>
                 </ul>
 
-                <?php if ( $prezzo || $trattativa ) : ?>
                 <div class="mecspe-card-price">
                     <?php if ( $trattativa ) : ?>
-                        Trattativa riservata
+                        Trattativa in sede
                     <?php elseif ( $prezzo ) : ?>
-                        &euro; <?php echo esc_html( number_format( (int)$prezzo, 0, ',', '.' ) ); ?>
+                        &euro; <?php echo esc_html( number_format( (float)str_replace('.','',str_replace(',','',$prezzo)), 0, ',', '.' ) ); ?>
                         <small>+ IVA</small>
+                    <?php else : ?>
+                        <span style="color:#999;font-size:13px">Contattaci per il prezzo</span>
                     <?php endif; ?>
                 </div>
-                <?php endif; ?>
             </div>
 
             <div class="mecspe-card-footer">
@@ -340,7 +334,7 @@ function mecspe_render_cards( WP_Query $query ) {
 function mecspe_get_tax_filters(): array {
     $result = [];
     $taxonomies = get_object_taxonomies( MECSPE_POST_TYPE, 'objects' );
-    /* Escludi tassonomie interne WP e categorie blog */
+    /* Escludi tassonomie interne WP, categorie blog e tag */
     $exclude = [ 'post_format', 'post_tag', 'category' ];
     foreach ( $taxonomies as $tax ) {
         if ( in_array( $tax->name, $exclude, true ) ) continue;
