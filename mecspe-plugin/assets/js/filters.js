@@ -1,36 +1,33 @@
 /* ============================================================
-   MECSPE ESPOSITORI — Filtri AJAX
+   MECSPE PRODOTTI — Filtri AJAX v1.1
    ============================================================ */
 (function ($) {
     'use strict';
 
-    /* ── Stato ── */
     var state = {
-        s:               '',
-        order:           'title-ASC',
-        mecspe_settore:  [],
-        mecspe_padiglione: [],
-        paged:           1,
-        maxPages:        1,
-        loading:         false,
+        s:       '',
+        order:   'title-ASC',
+        taxes:   {},   // { taxonomy_slug: [val, val] }
+        paged:   1,
+        maxPages: 1,
+        loading: false,
     };
 
-    var $wrap, $grid, $count, $loadMore, $pagination;
+    var $wrap, $grid, $count, $loadMore, $pagination, $badge;
     var searchTimer;
+    var STR = window.MecspeAjax ? MecspeAjax.strings : {};
 
-    /* ============================================================
-       INIT
-       ============================================================ */
+    /* ── Init ── */
     $(document).ready(function () {
         $wrap       = $('#mecspe-wrap');
+        if (!$wrap.length) return;
+
         $grid       = $('#mecspe-grid');
         $count      = $('#mecspe-count');
         $loadMore   = $('#mecspe-load-more');
         $pagination = $('#mecspe-pagination');
+        $badge      = $('#mecspe-filter-badge');
 
-        if (!$wrap.length) return;
-
-        /* Leggi stato iniziale dai data-max */
         state.maxPages = parseInt($loadMore.data('max') || 1, 10);
 
         initSearch();
@@ -39,7 +36,8 @@
         initLoadMore();
         initSidebarToggle();
         initGroupToggles();
-        initActiveChips();
+        syncChips();
+        syncBadge();
     });
 
     /* ============================================================
@@ -52,8 +50,8 @@
             searchTimer = setTimeout(function () {
                 state.s     = val;
                 state.paged = 1;
-                fetchResults(false);
-            }, 420);
+                fetch(false);
+            }, 400);
         });
     }
 
@@ -64,29 +62,29 @@
         $('#mecspe-orderby').on('change', function () {
             state.order = $(this).val();
             state.paged = 1;
-            fetchResults(false);
+            fetch(false);
         });
     }
 
     /* ============================================================
-       CHECKBOX FILTRI
+       CHECKBOX
        ============================================================ */
     function initCheckboxes() {
         $(document).on('change', '.mecspe-filter-check', function () {
-            rebuildTaxFilters();
+            rebuildTaxes();
             state.paged = 1;
-            fetchResults(false);
-            updateActiveChips();
+            fetch(false);
+            syncChips();
+            syncBadge();
         });
     }
 
-    function rebuildTaxFilters() {
-        state.mecspe_settore    = [];
-        state.mecspe_padiglione = [];
+    function rebuildTaxes() {
+        state.taxes = {};
         $('.mecspe-filter-check:checked').each(function () {
             var tax = $(this).data('taxonomy');
-            if (tax === 'mecspe_settore')    state.mecspe_settore.push($(this).val());
-            if (tax === 'mecspe_padiglione') state.mecspe_padiglione.push($(this).val());
+            if (!state.taxes[tax]) state.taxes[tax] = [];
+            state.taxes[tax].push($(this).val());
         });
     }
 
@@ -97,39 +95,39 @@
         $(document).on('click', '#mecspe-load-more', function () {
             if (state.loading) return;
             state.paged++;
-            fetchResults(true);
+            fetch(true);
         });
     }
 
     /* ============================================================
-       FETCH
+       FETCH AJAX
        ============================================================ */
-    function fetchResults(append) {
+    function fetch(append) {
         if (state.loading) return;
         state.loading = true;
         $wrap.addClass('mecspe-loading');
 
         if (!append) {
-            $grid.html(skeletonHTML(6));
+            $grid.html(skeleton(6));
         } else {
-            $loadMore.prop('disabled', true).text('Caricamento…');
+            $loadMore.prop('disabled', true).text(STR.loading || 'Caricamento…');
         }
 
         var data = {
-            action:  'mecspe_filter',
-            nonce:   MecspeAjax.nonce,
-            paged:   state.paged,
-            mecspe_s: state.s,
+            action:       'mecspe_filter',
+            nonce:        MecspeAjax.nonce,
+            paged:        state.paged,
+            mecspe_s:     state.s,
             mecspe_order: state.order,
         };
 
-        if (state.mecspe_settore.length)    data['mecspe_settore']    = state.mecspe_settore;
-        if (state.mecspe_padiglione.length) data['mecspe_padiglione'] = state.mecspe_padiglione;
+        $.each(state.taxes, function (tax, vals) {
+            data[tax] = vals;
+        });
 
         $.post(MecspeAjax.ajaxurl, data)
             .done(function (res) {
                 if (!res.success) return;
-
                 var d = res.data;
                 state.maxPages = d.max_pages;
 
@@ -137,27 +135,27 @@
                     $grid.append(d.html);
                 } else {
                     $grid.html(d.html);
-                    /* scroll morbido verso la griglia */
-                    $('html,body').animate({ scrollTop: $wrap.offset().top - 30 }, 300);
+                    $('html,body').animate({ scrollTop: $wrap.offset().top - 24 }, 280);
                 }
 
-                /* Aggiorna contatore */
-                $count.text(d.found + ' espositore' + (d.found !== 1 ? 'i' : ''));
+                /* Contatore */
+                var label = d.found === 1
+                    ? '1 ' + (STR.found_singular || 'prodotto trovato')
+                    : d.found + ' ' + (STR.found_plural || 'prodotti trovati');
+                $count.text(label);
 
-                /* Gestisci "carica altri" */
+                /* Load more */
                 if (state.paged >= state.maxPages) {
                     $pagination.hide();
                 } else {
                     $pagination.show();
-                    $loadMore
-                        .data('page', state.paged)
-                        .data('max',  state.maxPages)
-                        .prop('disabled', false)
-                        .text('Carica altri');
+                    $loadMore.prop('disabled', false).text(STR.load_more || 'Carica altri');
                 }
             })
             .fail(function () {
-                if (!append) $grid.html('<div class="mecspe-no-results"><p>Errore nel caricamento. Riprova.</p></div>');
+                if (!append) {
+                    $grid.html('<div class="mecspe-no-results"><p>' + (STR.error || 'Errore nel caricamento.') + '</p></div>');
+                }
             })
             .always(function () {
                 state.loading = false;
@@ -165,22 +163,24 @@
             });
     }
 
-    /* ============================================================
-       SKELETON LOADER
-       ============================================================ */
-    function skeletonHTML(n) {
-        var cards = '';
+    /* ── Skeleton ── */
+    function skeleton(n) {
+        var h = '';
         for (var i = 0; i < n; i++) {
-            cards += '<article class="mecspe-card" style="min-height:280px">' +
-                '<div class="mecspe-skeleton" style="height:160px;border-radius:0"></div>' +
-                '<div class="mecspe-card-body" style="gap:12px">' +
-                '<div class="mecspe-skeleton" style="height:18px;border-radius:4px;width:75%"></div>' +
-                '<div class="mecspe-skeleton" style="height:14px;border-radius:4px;width:50%"></div>' +
-                '<div class="mecspe-skeleton" style="height:12px;border-radius:4px;width:90%"></div>' +
-                '<div class="mecspe-skeleton" style="height:12px;border-radius:4px;width:65%"></div>' +
-                '</div></article>';
+            h += '<article class="mecspe-card">'
+               + '<div style="height:180px;background:#eef0f4;border-bottom:1px solid #dde2ea"></div>'
+               + '<div class="mecspe-card-body" style="gap:12px">'
+               + '<div class="mp-skel" style="height:18px;width:70%"></div>'
+               + '<div class="mp-skel" style="height:13px;width:45%"></div>'
+               + '<div class="mp-skel" style="height:12px;width:90%"></div>'
+               + '<div class="mp-skel" style="height:12px;width:60%"></div>'
+               + '</div>'
+               + '<div style="padding:12px 16px;background:#f2f4f7;border-top:1px solid #dde2ea">'
+               + '<div class="mp-skel" style="height:34px;border-radius:8px"></div>'
+               + '</div>'
+               + '</article>';
         }
-        return cards;
+        return h;
     }
 
     /* ============================================================
@@ -188,103 +188,100 @@
        ============================================================ */
     function initSidebarToggle() {
         var $sidebar = $('#mecspe-sidebar');
-        var $overlay = $('<div class="mecspe-overlay"></div>');
-        $('body').append($overlay);
+        var $overlay = $('#mecspe-overlay');
 
         $('#mecspe-toggle-sidebar').on('click', function () {
-            $sidebar.toggleClass('open');
-            $overlay.toggle($sidebar.hasClass('open'));
+            var open = $sidebar.hasClass('open');
+            $sidebar.toggleClass('open', !open);
+            $overlay.toggleClass('open', !open);
         });
 
         $overlay.on('click', function () {
             $sidebar.removeClass('open');
-            $overlay.hide();
+            $overlay.removeClass('open');
         });
     }
 
     /* ============================================================
-       COLLASSA/ESPANDI GRUPPI FILTRO
+       ACCORDION GRUPPI
        ============================================================ */
     function initGroupToggles() {
-        $(document).on('click', '.mecspe-filter-group-toggle', function () {
-            var $btn     = $(this);
-            var $opts    = $btn.closest('.mecspe-filter-group').find('.mecspe-filter-options');
-            var expanded = $btn.attr('aria-expanded') === 'true';
-
-            $btn.attr('aria-expanded', !expanded);
-            if (expanded) {
-                $opts.css('max-height', $opts[0].scrollHeight + 'px');
-                // forza reflow
-                $opts[0].offsetHeight; // eslint-disable-line no-unused-expressions
-                $opts.css('max-height', '0').addClass('collapsed');
-            } else {
-                $opts.removeClass('collapsed').css('max-height', $opts[0].scrollHeight + 'px');
-                setTimeout(function () { $opts.css('max-height', ''); }, 300);
-            }
+        /* Imposta max-height iniziale */
+        $('.mecspe-filter-options').each(function () {
+            $(this).css('max-height', this.scrollHeight + 'px');
         });
 
-        /* Imposta altezze iniziali */
-        $('.mecspe-filter-options').each(function () {
-            $(this).css('max-height', $(this)[0].scrollHeight + 'px');
+        $(document).on('click', '.mecspe-filter-group-toggle', function () {
+            var $btn  = $(this);
+            var $opts = $btn.closest('.mecspe-filter-group').find('.mecspe-filter-options');
+            var open  = $btn.attr('aria-expanded') === 'true';
+
+            $btn.attr('aria-expanded', !open);
+            if (open) {
+                $opts.css('max-height', $opts[0].scrollHeight + 'px');
+                requestAnimationFrame(function () {
+                    $opts.css('max-height', '0').addClass('collapsed');
+                });
+            } else {
+                $opts.removeClass('collapsed').css('max-height', $opts[0].scrollHeight + 'px');
+                setTimeout(function () { $opts.css('max-height', ''); }, 260);
+            }
         });
     }
 
     /* ============================================================
-       CHIPS FILTRI ATTIVI
+       CHIPS ATTIVI
        ============================================================ */
-    function initActiveChips() {
-        /* Contenitore chips */
-        var $chipsWrap = $('<div class="mecspe-active-filters" id="mecspe-active-filters"></div>');
-        $('#mecspe-main').prepend($chipsWrap);
-        updateActiveChips();
-
-        /* Reset completo */
-        $('#mecspe-reset').on('click', function () {
-            $('.mecspe-filter-check').prop('checked', false);
-            rebuildTaxFilters();
-            state.paged = 1;
-            fetchResults(false);
-            updateActiveChips();
-        });
-    }
-
-    function updateActiveChips() {
-        var $chipsWrap = $('#mecspe-active-filters');
-        $chipsWrap.empty();
+    function syncChips() {
+        var $c = $('#mecspe-active-filters').empty();
 
         $('.mecspe-filter-check:checked').each(function () {
-            var $cb   = $(this);
-            var label = $cb.closest('.mecspe-checkbox-label').clone();
-            label.find('input, .mecspe-checkbox-custom, .mecspe-term-count').remove();
-            var name  = $.trim(label.text());
-            var tax   = $cb.data('taxonomy');
-            var val   = $cb.val();
+            var tax   = $(this).data('taxonomy');
+            var val   = $(this).val();
+            var label = $(this).data('label') || val;
 
-            var $chip = $(
-                '<span class="mecspe-chip">' + escapeHtml(name) +
-                '<button class="mecspe-chip-remove" data-tax="' + escapeHtml(tax) +
-                '" data-val="' + escapeHtml(val) + '" aria-label="Rimuovi filtro">×</button></span>'
+            $c.append(
+                $('<span class="mecspe-chip"></span>')
+                    .text(label + ' ')
+                    .append(
+                        $('<button class="mecspe-chip-remove" aria-label="Rimuovi">×</button>')
+                            .data({ tax: tax, val: val })
+                    )
             );
-            $chipsWrap.append($chip);
         });
 
-        /* Rimuovi singolo chip */
-        $chipsWrap.off('click', '.mecspe-chip-remove').on('click', '.mecspe-chip-remove', function () {
+        $c.off('click', '.mecspe-chip-remove').on('click', '.mecspe-chip-remove', function () {
             var tax = $(this).data('tax');
             var val = $(this).data('val');
             $('.mecspe-filter-check[data-taxonomy="' + tax + '"][value="' + val + '"]').prop('checked', false);
-            rebuildTaxFilters();
+            rebuildTaxes();
             state.paged = 1;
-            fetchResults(false);
-            updateActiveChips();
+            fetch(false);
+            syncChips();
+            syncBadge();
         });
     }
 
-    /* ============================================================
-       UTILITY
-       ============================================================ */
-    function escapeHtml(str) {
-        return $('<span>').text(str).html();
+    /* ── Badge contatore filtri attivi (mobile) ── */
+    function syncBadge() {
+        var n = $('.mecspe-filter-check:checked').length;
+        if (n > 0) {
+            $badge.text(n).show();
+        } else {
+            $badge.hide();
+        }
     }
+
+    /* ── Reset ── */
+    $(document).on('click', '#mecspe-reset', function () {
+        $('.mecspe-filter-check').prop('checked', false);
+        $('#mecspe-search').val('');
+        state.s     = '';
+        state.taxes = {};
+        state.paged = 1;
+        fetch(false);
+        syncChips();
+        syncBadge();
+    });
 
 }(jQuery));
