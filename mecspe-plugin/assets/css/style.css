@@ -104,6 +104,19 @@
     font-size: 14px; color: #666; padding: 0; line-height: 1;
 }
 
+/* KM range */
+.mecspe-km-range {
+    display: flex; align-items: center; gap: 6px;
+}
+.mecspe-km-input {
+    flex: 1; width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    font-size: 12px;
+    background: #f9f9f9;
+}
+.mecspe-km-input:focus { outline: none; border-color: #999; background: #fff; }
+
 /* Gruppi filtro */
 .mecspe-filter-group { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
 .mecspe-filter-group-toggle {

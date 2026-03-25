@@ -93,8 +93,8 @@ function mecspe_shortcode( $atts ) {
    ========================================================= */
 function mecspe_render_archive( int $per_page = 12 ) {
 
-    /* Raccogli tutte le tassonomie registrate su questo CPT */
-    $tax_filters = mecspe_get_tax_filters();
+    /* Raccogli filtri meta dai campi ACF del truck */
+    $meta_filters = mecspe_get_meta_filters();
 
     $args  = mecspe_build_query_args( $per_page );
     $query = new WP_Query( $args );
@@ -162,30 +162,41 @@ function mecspe_render_archive( int $per_page = 12 ) {
 
                 <div id="mecspe-active-filters"></div>
 
-                <?php foreach ( $tax_filters as $tax_slug => $tax_data ) :
-                    if ( empty( $tax_data['terms'] ) ) continue;
-                    $active = (array)( $_GET[ $tax_slug ] ?? [] );
+                <!-- Filtro KM -->
+                <div class="mecspe-filter-group">
+                    <button class="mecspe-filter-group-toggle" aria-expanded="true">
+                        KM percorsi
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="mecspe-filter-options">
+                        <div class="mecspe-km-range">
+                            <input type="number" id="mecspe-km-min" class="mecspe-km-input" placeholder="Min KM" min="0" step="10000" value="<?php echo esc_attr( $_GET['mecspe_km_min'] ?? '' ); ?>">
+                            <span>—</span>
+                            <input type="number" id="mecspe-km-max" class="mecspe-km-input" placeholder="Max KM" min="0" step="10000" value="<?php echo esc_attr( $_GET['mecspe_km_max'] ?? '' ); ?>">
+                        </div>
+                    </div>
+                </div>
+
+                <?php foreach ( $meta_filters as $meta_key => $filter ) :
+                    if ( empty( $filter['options'] ) ) continue;
+                    $active = (array)( $_GET[ 'mf_' . $meta_key ] ?? [] );
                 ?>
                 <div class="mecspe-filter-group">
                     <button class="mecspe-filter-group-toggle" aria-expanded="true">
-                        <?php echo esc_html( $tax_data['label'] ); ?>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="6 9 12 15 18 9"/>
-                        </svg>
+                        <?php echo esc_html( $filter['label'] ); ?>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                     <div class="mecspe-filter-options">
-                        <?php foreach ( $tax_data['terms'] as $term ) : ?>
+                        <?php foreach ( $filter['options'] as $val ) : ?>
                         <label class="mecspe-checkbox-label">
                             <input type="checkbox"
                                    class="mecspe-filter-check"
-                                   data-taxonomy="<?php echo esc_attr( $tax_slug ); ?>"
-                                   data-label="<?php echo esc_attr( $term->name ); ?>"
-                                   value="<?php echo esc_attr( $term->slug ); ?>"
-                                   <?php checked( in_array( $term->slug, $active ) ); ?>>
+                                   data-taxonomy="mf_<?php echo esc_attr( $meta_key ); ?>"
+                                   data-label="<?php echo esc_attr( $val ); ?>"
+                                   value="<?php echo esc_attr( $val ); ?>"
+                                   <?php checked( in_array( $val, $active ) ); ?>>
                             <span class="mecspe-checkbox-custom"></span>
-                            <span class="mecspe-checkbox-text"><?php echo esc_html( $term->name ); ?></span>
-                            <span class="mecspe-term-count"><?php echo $term->count; ?></span>
+                            <span class="mecspe-checkbox-text"><?php echo esc_html( $val ); ?></span>
                         </label>
                         <?php endforeach; ?>
                     </div>
@@ -329,21 +340,49 @@ function mecspe_render_cards( WP_Query $query ) {
 }
 
 /* =========================================================
-   6. HELPER: tassonomie disponibili per il CPT
+   6. HELPER: filtri basati su meta ACF del truck
    ========================================================= */
-function mecspe_get_tax_filters(): array {
+function mecspe_get_meta_filters(): array {
+    /* Gruppi: meta_key => label
+       Per i repeater ACF si usa il sub-campo _0_testo */
+    $groups = [
+        'marche_0_testo'        => 'Marca',
+        'cambi_0_testo'         => 'Cambio',
+        'cabine_0_testo'        => 'Cabina',
+        'allestimenti_0_testo'  => 'Allestimento',
+        'tipi_offerta_0_testo'  => 'Tipo offerta',
+        'prima_immatricolazione'=> 'Anno immatricolazione',
+    ];
+
+    global $wpdb;
     $result = [];
-    $taxonomies = get_object_taxonomies( MECSPE_POST_TYPE, 'objects' );
-    /* Escludi tassonomie interne WP, categorie blog e tag */
-    $exclude = [ 'post_format', 'post_tag', 'category' ];
-    foreach ( $taxonomies as $tax ) {
-        if ( in_array( $tax->name, $exclude, true ) ) continue;
-        $terms = get_terms( [ 'taxonomy' => $tax->name, 'hide_empty' => true, 'number' => 100 ] );
-        if ( empty( $terms ) || is_wp_error( $terms ) ) continue;
-        $result[ $tax->name ] = [
-            'label' => $tax->label,
-            'terms' => $terms,
-        ];
+    foreach ( $groups as $meta_key => $label ) {
+        $options = $wpdb->get_col( $wpdb->prepare(
+            "SELECT DISTINCT pm.meta_value
+             FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+             WHERE pm.meta_key = %s
+               AND p.post_type = %s
+               AND p.post_status = 'publish'
+               AND pm.meta_value != ''
+             ORDER BY pm.meta_value ASC
+             LIMIT 100",
+            $meta_key, MECSPE_POST_TYPE
+        ) );
+
+        /* Per anno: estrai solo l'anno (ultime 4 cifre) */
+        if ( $meta_key === 'prima_immatricolazione' ) {
+            $years = [];
+            foreach ( $options as $v ) {
+                if ( preg_match( '/\d{4}/', $v, $m ) ) $years[] = $m[0];
+            }
+            $options = array_values( array_unique( $years ) );
+            rsort( $options ); // anni decrescenti
+        }
+
+        if ( ! empty( $options ) ) {
+            $result[ $meta_key ] = [ 'label' => $label, 'options' => $options ];
+        }
     }
     return $result;
 }
@@ -367,18 +406,41 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
     $args['orderby'] = in_array( $orderby, [ 'title', 'date' ], true ) ? $orderby : 'title';
     $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
 
-    $tax_query = [];
-    $taxonomies = array_keys( mecspe_get_tax_filters() );
-    foreach ( $taxonomies as $tax ) {
-        $values = array_filter( array_map( 'sanitize_text_field', (array)( $_REQUEST[ $tax ] ?? [] ) ) );
-        if ( ! empty( $values ) ) {
-            $tax_query[] = [ 'taxonomy' => $tax, 'field' => 'slug', 'terms' => $values ];
+    /* Meta query dai filtri ACF */
+    $meta_query = [ 'relation' => 'AND' ];
+
+    /* Filtri checkbox (mf_<meta_key>) */
+    $meta_groups = array_keys( mecspe_get_meta_filters() );
+    foreach ( $meta_groups as $meta_key ) {
+        $values = array_filter( array_map( 'sanitize_text_field', (array)( $_REQUEST[ 'mf_' . $meta_key ] ?? [] ) ) );
+        if ( empty( $values ) ) continue;
+
+        if ( $meta_key === 'prima_immatricolazione' ) {
+            /* Anno: LIKE '%YYYY' per ogni anno selezionato */
+            $year_group = [ 'relation' => 'OR' ];
+            foreach ( $values as $year ) {
+                $year_group[] = [ 'key' => $meta_key, 'value' => $year, 'compare' => 'LIKE' ];
+            }
+            $meta_query[] = $year_group;
+        } else {
+            $meta_query[] = [ 'key' => $meta_key, 'value' => $values, 'compare' => 'IN' ];
         }
     }
-    if ( ! empty( $tax_query ) ) {
-        $tax_query['relation'] = 'AND';
-        $args['tax_query']     = $tax_query;
+
+    /* Filtro range KM */
+    $km_min = (int)( $_REQUEST['mecspe_km_min'] ?? 0 );
+    $km_max = (int)( $_REQUEST['mecspe_km_max'] ?? 0 );
+    if ( $km_min > 0 || $km_max > 0 ) {
+        if ( $km_min > 0 && $km_max > 0 ) {
+            $meta_query[] = [ 'key' => 'km_percorsi', 'value' => [ $km_min, $km_max ], 'compare' => 'BETWEEN', 'type' => 'NUMERIC' ];
+        } elseif ( $km_min > 0 ) {
+            $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_min, 'compare' => '>=', 'type' => 'NUMERIC' ];
+        } else {
+            $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_max, 'compare' => '<=', 'type' => 'NUMERIC' ];
+        }
     }
+
+    if ( count( $meta_query ) > 1 ) $args['meta_query'] = $meta_query;
 
     return $args;
 }

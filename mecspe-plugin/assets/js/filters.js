@@ -33,6 +33,7 @@
         initSearch();
         initOrderby();
         initCheckboxes();
+        initKmRange();
         initLoadMore();
         initSidebarToggle();
         initGroupToggles();
@@ -100,6 +101,21 @@
     }
 
     /* ============================================================
+       KM RANGE
+       ============================================================ */
+    function initKmRange() {
+        var timer;
+        $(document).on('input', '#mecspe-km-min, #mecspe-km-max', function () {
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+                state.paged = 1;
+                fetch(false);
+                syncBadge();
+            }, 500);
+        });
+    }
+
+    /* ============================================================
        FETCH AJAX
        ============================================================ */
     function fetch(append) {
@@ -114,11 +130,13 @@
         }
 
         var data = {
-            action:       'mecspe_filter',
-            nonce:        MecspeAjax.nonce,
-            paged:        state.paged,
-            mecspe_s:     state.s,
-            mecspe_order: state.order,
+            action:        'mecspe_filter',
+            nonce:         MecspeAjax.nonce,
+            paged:         state.paged,
+            mecspe_s:      state.s,
+            mecspe_order:  state.order,
+            mecspe_km_min: $('#mecspe-km-min').val() || '',
+            mecspe_km_max: $('#mecspe-km-max').val() || '',
         };
 
         $.each(state.taxes, function (tax, vals) {
@@ -276,6 +294,7 @@
     $(document).on('click', '#mecspe-reset', function () {
         $('.mecspe-filter-check').prop('checked', false);
         $('#mecspe-search').val('');
+        $('#mecspe-km-min, #mecspe-km-max').val('');
         state.s     = '';
         state.taxes = {};
         state.paged = 1;
