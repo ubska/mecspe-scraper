@@ -1,354 +1,378 @@
 <?php
 /**
- * Plugin Name: MECSPE Espositori
- * Plugin URI:  https://github.com/ubska/mecspe-scraper
- * Description: Visualizza gli espositori MECSPE con filtri laterali e superiori.
- * Version:     1.0.0
- * Author:      MECSPE Scraper
- * Text Domain: mecspe-plugin
- * License:     GPL-2.0+
+ * Plugin Name:  MECSPE Prodotti
+ * Plugin URI:   https://github.com/ubska/mecspe-scraper
+ * Description:  Visualizza i prodotti MECSPE con filtri laterali e superiori.
+ * Version:      1.1.0
+ * Author:       MECSPE Scraper
+ * Text Domain:  mecspe-plugin
+ * License:      GPL-2.0+
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 define( 'MECSPE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MECSPE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'MECSPE_POST_TYPE',  'prodotti' );
 
 /* =========================================================
-   1. CUSTOM POST TYPE
+   1. TASSONOMIE  (aggiuntive, se non già registrate dallo scraper)
    ========================================================= */
-add_action( 'init', 'mecspe_register_cpt' );
-function mecspe_register_cpt() {
-    register_post_type( 'mecspe_espositore', [
-        'labels'        => [
-            'name'          => 'Espositori MECSPE',
-            'singular_name' => 'Espositore',
-            'add_new_item'  => 'Aggiungi Espositore',
-            'edit_item'     => 'Modifica Espositore',
-            'search_items'  => 'Cerca Espositori',
-            'not_found'     => 'Nessun espositore trovato.',
-        ],
-        'public'        => true,
-        'show_in_menu'  => true,
-        'menu_icon'     => 'dashicons-building',
-        'supports'      => [ 'title', 'editor', 'thumbnail', 'custom-fields' ],
-        'has_archive'   => true,
-        'rewrite'       => [ 'slug' => 'espositori' ],
-        'show_in_rest'  => true,
-    ] );
-}
-
-/* =========================================================
-   2. TASSONOMIE
-   ========================================================= */
-add_action( 'init', 'mecspe_register_taxonomies' );
+add_action( 'init', 'mecspe_register_taxonomies', 20 );
 function mecspe_register_taxonomies() {
-    // Settore merceologico
-    register_taxonomy( 'mecspe_settore', 'mecspe_espositore', [
-        'labels'            => [
-            'name'          => 'Settori',
-            'singular_name' => 'Settore',
-            'all_items'     => 'Tutti i settori',
-        ],
-        'hierarchical'      => true,
-        'show_in_rest'      => true,
-        'rewrite'           => [ 'slug' => 'settore' ],
-    ] );
-
-    // Padiglione
-    register_taxonomy( 'mecspe_padiglione', 'mecspe_espositore', [
-        'labels'            => [
-            'name'          => 'Padiglioni',
-            'singular_name' => 'Padiglione',
-            'all_items'     => 'Tutti i padiglioni',
-        ],
-        'hierarchical'      => false,
-        'show_in_rest'      => true,
-        'rewrite'           => [ 'slug' => 'padiglione' ],
-    ] );
+    if ( ! taxonomy_exists( 'mecspe_categoria' ) ) {
+        register_taxonomy( 'mecspe_categoria', MECSPE_POST_TYPE, [
+            'labels'       => [
+                'name'          => 'Categorie MECSPE',
+                'singular_name' => 'Categoria',
+                'all_items'     => 'Tutte le categorie',
+            ],
+            'hierarchical' => true,
+            'show_in_rest' => true,
+            'rewrite'      => [ 'slug' => 'mecspe-categoria' ],
+        ] );
+    }
+    if ( ! taxonomy_exists( 'mecspe_padiglione' ) ) {
+        register_taxonomy( 'mecspe_padiglione', MECSPE_POST_TYPE, [
+            'labels'       => [
+                'name'          => 'Padiglioni',
+                'singular_name' => 'Padiglione',
+                'all_items'     => 'Tutti i padiglioni',
+            ],
+            'hierarchical' => false,
+            'show_in_rest' => true,
+            'rewrite'      => [ 'slug' => 'mecspe-padiglione' ],
+        ] );
+    }
 }
 
 /* =========================================================
-   3. ASSETS
+   2. ASSETS
    ========================================================= */
 add_action( 'wp_enqueue_scripts', 'mecspe_enqueue_assets' );
 function mecspe_enqueue_assets() {
     wp_enqueue_style(
         'mecspe-style',
         MECSPE_PLUGIN_URL . 'assets/css/style.css',
-        [],
-        '1.0.0'
+        [], '1.1.0'
     );
     wp_enqueue_script(
         'mecspe-filters',
         MECSPE_PLUGIN_URL . 'assets/js/filters.js',
-        [ 'jquery' ],
-        '1.0.0',
-        true
+        [ 'jquery' ], '1.1.0', true
     );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
+        'strings' => [
+            'found_singular' => 'prodotto trovato',
+            'found_plural'   => 'prodotti trovati',
+            'load_more'      => 'Carica altri',
+            'loading'        => 'Caricamento…',
+            'error'          => 'Errore nel caricamento. Riprova.',
+        ],
     ] );
 }
 
 /* =========================================================
-   4. SHORTCODE  [mecspe_espositori]
+   3. SHORTCODE  [mecspe_prodotti]
    ========================================================= */
+add_shortcode( 'mecspe_prodotti', 'mecspe_shortcode' );
+/* alias legacy */
 add_shortcode( 'mecspe_espositori', 'mecspe_shortcode' );
-function mecspe_shortcode( $atts ) {
-    $atts = shortcode_atts( [
-        'per_page' => 12,
-    ], $atts );
 
+function mecspe_shortcode( $atts ) {
+    $atts = shortcode_atts( [ 'per_page' => 12 ], $atts );
     ob_start();
     mecspe_render_archive( (int) $atts['per_page'] );
     return ob_get_clean();
 }
 
 /* =========================================================
-   5. RENDER PRINCIPALE
+   4. RENDER ARCHIVIO
    ========================================================= */
-function mecspe_render_archive( $per_page = 12 ) {
-    $settori    = get_terms( [ 'taxonomy' => 'mecspe_settore',    'hide_empty' => true ] );
-    $padiglioni = get_terms( [ 'taxonomy' => 'mecspe_padiglione', 'hide_empty' => true ] );
+function mecspe_render_archive( int $per_page = 12 ) {
 
-    $args = mecspe_build_query_args( $per_page );
+    /* Raccogli tutte le tassonomie registrate su questo CPT */
+    $tax_filters = mecspe_get_tax_filters();
+
+    $args  = mecspe_build_query_args( $per_page );
     $query = new WP_Query( $args );
+
     ?>
     <div class="mecspe-wrap" id="mecspe-wrap">
 
-        <!-- ── TOP BAR ── -->
+        <!-- ════ TOP BAR ════ -->
         <div class="mecspe-topbar">
+
             <div class="mecspe-search-wrap">
-                <input type="text"
-                       id="mecspe-search"
-                       placeholder="Cerca espositore&hellip;"
-                       value="<?php echo esc_attr( $_GET['mecspe_s'] ?? '' ); ?>"
-                       autocomplete="off">
                 <span class="mecspe-search-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
                 </span>
+                <input type="text" id="mecspe-search"
+                       placeholder="Cerca prodotto o espositore…"
+                       value="<?php echo esc_attr( $_GET['mecspe_s'] ?? '' ); ?>"
+                       autocomplete="off">
             </div>
-            <div class="mecspe-topbar-right">
-                <span class="mecspe-results-count" id="mecspe-count">
-                    <?php echo $query->found_posts; ?> espositori
-                </span>
-                <select id="mecspe-orderby" class="mecspe-select">
-                    <option value="title-ASC"  <?php selected( ($_GET['mecspe_order'] ?? 'title-ASC'), 'title-ASC' ); ?>>A &ndash; Z</option>
-                    <option value="title-DESC" <?php selected( ($_GET['mecspe_order'] ?? ''), 'title-DESC' ); ?>>Z &ndash; A</option>
-                    <option value="date-DESC"  <?php selected( ($_GET['mecspe_order'] ?? ''), 'date-DESC' ); ?>>Più recenti</option>
-                </select>
-                <button class="mecspe-btn-toggle-sidebar" id="mecspe-toggle-sidebar" aria-label="Mostra/nascondi filtri">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="4" y1="6" x2="20" y2="6"/>
-                        <line x1="8" y1="12" x2="20" y2="12"/>
-                        <line x1="12" y1="18" x2="20" y2="18"/>
-                    </svg>
-                    Filtri
-                </button>
-            </div>
-        </div>
 
-        <!-- ── LAYOUT ── -->
-        <div class="mecspe-layout">
+            <div class="mecspe-topbar-controls">
+                <span class="mecspe-results-count" id="mecspe-count">
+                    <?php echo $query->found_posts; ?> prodotti trovati
+                </span>
+                <div class="mecspe-topbar-right">
+                    <label class="mecspe-label-inline" for="mecspe-orderby">Ordina:</label>
+                    <select id="mecspe-orderby" class="mecspe-select">
+                        <option value="title-ASC"  <?php selected( ($_GET['mecspe_order'] ?? 'title-ASC'), 'title-ASC' ); ?>>A &ndash; Z</option>
+                        <option value="title-DESC" <?php selected( ($_GET['mecspe_order'] ?? ''), 'title-DESC' ); ?>>Z &ndash; A</option>
+                        <option value="date-DESC"  <?php selected( ($_GET['mecspe_order'] ?? ''), 'date-DESC' ); ?>>Più recenti</option>
+                    </select>
+                    <button class="mecspe-btn-toggle-sidebar" id="mecspe-toggle-sidebar">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="4" y1="6" x2="20" y2="6"/>
+                            <line x1="8" y1="12" x2="20" y2="12"/>
+                            <line x1="12" y1="18" x2="20" y2="18"/>
+                        </svg>
+                        Filtri
+                        <span class="mecspe-filter-badge" id="mecspe-filter-badge" style="display:none">0</span>
+                    </button>
+                </div>
+            </div>
+
+        </div><!-- /.mecspe-topbar -->
+
+        <!-- ════ LAYOUT ════ -->
+        <div class="mecspe-layout" id="mecspe-layout">
 
             <!-- ── SIDEBAR ── -->
             <aside class="mecspe-sidebar" id="mecspe-sidebar">
                 <div class="mecspe-sidebar-header">
-                    <h3>Filtra per</h3>
-                    <button class="mecspe-reset-btn" id="mecspe-reset">Azzera filtri</button>
+                    <h3>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                        </svg>
+                        Filtra per
+                    </h3>
+                    <button class="mecspe-reset-btn" id="mecspe-reset">Azzera tutto</button>
                 </div>
 
-                <?php if ( ! empty( $settori ) && ! is_wp_error( $settori ) ) : ?>
+                <div id="mecspe-active-filters"></div>
+
+                <?php foreach ( $tax_filters as $tax_slug => $tax_data ) :
+                    if ( empty( $tax_data['terms'] ) ) continue;
+                    $active = (array)( $_GET[ $tax_slug ] ?? [] );
+                ?>
                 <div class="mecspe-filter-group">
                     <button class="mecspe-filter-group-toggle" aria-expanded="true">
-                        Settore
+                        <?php echo esc_html( $tax_data['label'] ); ?>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="6 9 12 15 18 9"/>
                         </svg>
                     </button>
                     <div class="mecspe-filter-options">
-                        <?php foreach ( $settori as $term ) : ?>
+                        <?php foreach ( $tax_data['terms'] as $term ) : ?>
                         <label class="mecspe-checkbox-label">
                             <input type="checkbox"
                                    class="mecspe-filter-check"
-                                   data-taxonomy="mecspe_settore"
+                                   data-taxonomy="<?php echo esc_attr( $tax_slug ); ?>"
+                                   data-label="<?php echo esc_attr( $term->name ); ?>"
                                    value="<?php echo esc_attr( $term->slug ); ?>"
-                                   <?php echo in_array( $term->slug, (array)( $_GET['mecspe_settore'] ?? [] ) ) ? 'checked' : ''; ?>>
+                                   <?php checked( in_array( $term->slug, $active ) ); ?>>
                             <span class="mecspe-checkbox-custom"></span>
-                            <?php echo esc_html( $term->name ); ?>
-                            <span class="mecspe-term-count">(<?php echo $term->count; ?>)</span>
+                            <span class="mecspe-checkbox-text"><?php echo esc_html( $term->name ); ?></span>
+                            <span class="mecspe-term-count"><?php echo $term->count; ?></span>
                         </label>
                         <?php endforeach; ?>
                     </div>
                 </div>
-                <?php endif; ?>
+                <?php endforeach; ?>
 
-                <?php if ( ! empty( $padiglioni ) && ! is_wp_error( $padiglioni ) ) : ?>
-                <div class="mecspe-filter-group">
-                    <button class="mecspe-filter-group-toggle" aria-expanded="true">
-                        Padiglione
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="6 9 12 15 18 9"/>
-                        </svg>
-                    </button>
-                    <div class="mecspe-filter-options">
-                        <?php foreach ( $padiglioni as $term ) : ?>
-                        <label class="mecspe-checkbox-label">
-                            <input type="checkbox"
-                                   class="mecspe-filter-check"
-                                   data-taxonomy="mecspe_padiglione"
-                                   value="<?php echo esc_attr( $term->slug ); ?>"
-                                   <?php echo in_array( $term->slug, (array)( $_GET['mecspe_padiglione'] ?? [] ) ) ? 'checked' : ''; ?>>
-                            <span class="mecspe-checkbox-custom"></span>
-                            <?php echo esc_html( $term->name ); ?>
-                            <span class="mecspe-term-count">(<?php echo $term->count; ?>)</span>
-                        </label>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-                <?php endif; ?>
+            </aside><!-- /.mecspe-sidebar -->
 
-            </aside>
-
-            <!-- ── GRID ── -->
+            <!-- ── MAIN ── -->
             <div class="mecspe-main" id="mecspe-main">
                 <div class="mecspe-grid" id="mecspe-grid">
                     <?php mecspe_render_cards( $query ); ?>
                 </div>
 
-                <?php if ( $query->max_num_pages > 1 ) : ?>
-                <div class="mecspe-pagination" id="mecspe-pagination">
+                <div class="mecspe-pagination" id="mecspe-pagination"
+                     style="<?php echo $query->max_num_pages <= 1 ? 'display:none' : ''; ?>">
                     <button class="mecspe-load-more" id="mecspe-load-more"
-                            data-page="2" data-max="<?php echo $query->max_num_pages; ?>">
+                            data-page="1"
+                            data-max="<?php echo (int) $query->max_num_pages; ?>">
                         Carica altri
                     </button>
                 </div>
-                <?php endif; ?>
-            </div>
+            </div><!-- /.mecspe-main -->
 
         </div><!-- /.mecspe-layout -->
+
+        <!-- overlay mobile -->
+        <div class="mecspe-overlay" id="mecspe-overlay"></div>
+
     </div><!-- /.mecspe-wrap -->
     <?php
     wp_reset_postdata();
 }
 
 /* =========================================================
-   6. RENDER CARD SINGOLA
+   5. CARD SINGOLA
    ========================================================= */
 function mecspe_render_cards( WP_Query $query ) {
     if ( ! $query->have_posts() ) {
-        echo '<div class="mecspe-no-results"><p>Nessun espositore trovato con i filtri selezionati.</p></div>';
+        echo '<div class="mecspe-no-results">'
+           . '<p>Nessun prodotto trovato con i filtri selezionati.</p>'
+           . '<p>Prova a rimuovere qualche filtro.</p>'
+           . '</div>';
         return;
     }
+
     while ( $query->have_posts() ) {
         $query->the_post();
-        $settori    = get_the_terms( get_the_ID(), 'mecspe_settore' );
-        $padiglioni = get_the_terms( get_the_ID(), 'mecspe_padiglione' );
-        $sito       = get_post_meta( get_the_ID(), '_mecspe_sito_web', true );
-        $stand      = get_post_meta( get_the_ID(), '_mecspe_stand', true );
+        $id = get_the_ID();
+
+        /* Leggi campi ACF del camion */
+        $acf = function_exists( 'get_field' );
+        $km         = $acf ? get_field( 'km_percorsi', $id )         : get_post_meta( $id, 'km_percorsi', true );
+        $anno       = $acf ? get_field( 'prima_immatricolazione', $id): get_post_meta( $id, 'prima_immatricolazione', true );
+        $cavalli    = $acf ? get_field( 'cavalli', $id )              : get_post_meta( $id, 'cavalli', true );
+        $prezzo     = $acf ? get_field( 'prezzo', $id )               : get_post_meta( $id, 'prezzo', true );
+        $trattativa = $acf ? get_field( 'trattativa_in_sede', $id )   : get_post_meta( $id, 'trattativa_in_sede', true );
+        $pronto     = $acf ? get_field( 'veicolo_pronto', $id )       : get_post_meta( $id, 'veicolo_pronto', true );
+
+        /* Marca dal repeater ACF */
+        $marca = '';
+        if ( $acf ) {
+            $marche = get_field( 'marche', $id );
+            if ( ! empty( $marche ) && is_array( $marche ) )
+                $marca = $marche[0]['testo'] ?? '';
+        }
+
+        /* Tag come badge (es. "Usato CGT Trucks") */
+        $tags = get_the_terms( $id, 'post_tag' );
+        $tax_badges = ( $tags && ! is_wp_error( $tags ) ) ? wp_list_pluck( $tags, 'name' ) : [];
         ?>
-        <article class="mecspe-card">
-            <a href="<?php the_permalink(); ?>" class="mecspe-card-link">
+        <article class="mecspe-card" id="post-<?php echo $id; ?>">
+
+            <a href="<?php the_permalink(); ?>" class="mecspe-card-thumb-link">
                 <div class="mecspe-card-thumb">
                     <?php if ( has_post_thumbnail() ) : ?>
-                        <?php the_post_thumbnail( 'medium', [ 'class' => 'mecspe-card-img' ] ); ?>
+                        <?php the_post_thumbnail( 'medium', [ 'class' => 'mecspe-card-img', 'loading' => 'lazy' ] ); ?>
                     <?php else : ?>
-                        <div class="mecspe-card-no-img">
+                        <div class="mecspe-card-placeholder">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                 stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
                             </svg>
                         </div>
                     <?php endif; ?>
                 </div>
-                <div class="mecspe-card-body">
-                    <h2 class="mecspe-card-title"><?php the_title(); ?></h2>
+            </a>
 
-                    <?php if ( ! empty( $settori ) && ! is_wp_error( $settori ) ) : ?>
-                    <div class="mecspe-card-tags">
-                        <?php foreach ( $settori as $s ) : ?>
-                        <span class="mecspe-tag"><?php echo esc_html( $s->name ); ?></span>
-                        <?php endforeach; ?>
-                    </div>
+            <div class="mecspe-card-body">
+                <?php if ( $marca ) : ?>
+                <div class="mecspe-card-brand"><?php echo esc_html( $marca ); ?></div>
+                <?php endif; ?>
+
+                <h2 class="mecspe-card-title">
+                    <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                </h2>
+
+                <?php if ( ! empty( $tax_badges ) ) : ?>
+                <div class="mecspe-card-tags">
+                    <?php foreach ( array_slice( $tax_badges, 0, 2 ) as $b ) : ?>
+                    <span class="mecspe-tag"><?php echo esc_html( $b ); ?></span>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
+                <ul class="mecspe-card-specs">
+                    <?php if ( $anno ) : ?>
+                    <li><strong>Immatricolazione:</strong> <?php echo esc_html( $anno ); ?></li>
                     <?php endif; ?>
+                    <?php if ( $km ) : ?>
+                    <li><strong>KM:</strong> <?php echo esc_html( number_format( (float)str_replace('.','',str_replace(',','',$km)), 0, ',', '.' ) ); ?> km</li>
+                    <?php endif; ?>
+                    <?php if ( $cavalli ) : ?>
+                    <li><strong>Cavalli:</strong> <?php echo esc_html( $cavalli ); ?> CV</li>
+                    <?php endif; ?>
+                    <?php if ( $pronto ) : ?>
+                    <li>&#10003; Veicolo pronto</li>
+                    <?php endif; ?>
+                </ul>
 
-                    <div class="mecspe-card-meta">
-                        <?php if ( ! empty( $padiglioni ) && ! is_wp_error( $padiglioni ) ) : ?>
-                        <span class="mecspe-meta-item">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-                            </svg>
-                            <?php echo esc_html( implode( ', ', wp_list_pluck( $padiglioni, 'name' ) ) ); ?>
-                        </span>
-                        <?php endif; ?>
-                        <?php if ( $stand ) : ?>
-                        <span class="mecspe-meta-item">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                            </svg>
-                            Stand <?php echo esc_html( $stand ); ?>
-                        </span>
-                        <?php endif; ?>
-                    </div>
-
-                    <?php if ( has_excerpt() ) : ?>
-                    <p class="mecspe-card-excerpt"><?php echo wp_trim_words( get_the_excerpt(), 15 ); ?></p>
+                <div class="mecspe-card-price">
+                    <?php if ( $trattativa ) : ?>
+                        Trattativa in sede
+                    <?php elseif ( $prezzo ) : ?>
+                        &euro; <?php echo esc_html( number_format( (float)str_replace('.','',str_replace(',','',$prezzo)), 0, ',', '.' ) ); ?>
+                        <small>+ IVA</small>
+                    <?php else : ?>
+                        <span style="color:#999;font-size:13px">Contattaci per il prezzo</span>
                     <?php endif; ?>
                 </div>
-            </a>
-            <?php if ( $sito ) : ?>
-            <div class="mecspe-card-footer">
-                <a href="<?php echo esc_url( $sito ); ?>" target="_blank" rel="noopener noreferrer"
-                   class="mecspe-btn-sito">Visita il sito</a>
             </div>
-            <?php endif; ?>
+
+            <div class="mecspe-card-footer">
+                <a href="<?php the_permalink(); ?>" class="mecspe-btn-dettaglio">Scopri di più</a>
+            </div>
+
         </article>
         <?php
     }
+    wp_reset_postdata();
 }
 
 /* =========================================================
-   7. QUERY ARGS HELPER
+   6. HELPER: tassonomie disponibili per il CPT
+   ========================================================= */
+function mecspe_get_tax_filters(): array {
+    $result = [];
+    $taxonomies = get_object_taxonomies( MECSPE_POST_TYPE, 'objects' );
+    /* Escludi tassonomie interne WP, categorie blog e tag */
+    $exclude = [ 'post_format', 'post_tag', 'category' ];
+    foreach ( $taxonomies as $tax ) {
+        if ( in_array( $tax->name, $exclude, true ) ) continue;
+        $terms = get_terms( [ 'taxonomy' => $tax->name, 'hide_empty' => true, 'number' => 100 ] );
+        if ( empty( $terms ) || is_wp_error( $terms ) ) continue;
+        $result[ $tax->name ] = [
+            'label' => $tax->label,
+            'terms' => $terms,
+        ];
+    }
+    return $result;
+}
+
+/* =========================================================
+   7. QUERY ARGS
    ========================================================= */
 function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
     $args = [
-        'post_type'      => 'mecspe_espositore',
+        'post_type'      => MECSPE_POST_TYPE,
         'posts_per_page' => $per_page,
         'paged'          => $paged,
         'post_status'    => 'publish',
     ];
 
-    // Ricerca
     $s = sanitize_text_field( $_REQUEST['mecspe_s'] ?? '' );
     if ( $s ) $args['s'] = $s;
 
-    // Ordinamento
     $order_raw = sanitize_text_field( $_REQUEST['mecspe_order'] ?? 'title-ASC' );
     [ $orderby, $order ] = array_pad( explode( '-', $order_raw, 2 ), 2, 'ASC' );
-    $allowed_orderby = [ 'title', 'date' ];
-    $args['orderby'] = in_array( $orderby, $allowed_orderby ) ? $orderby : 'title';
-    $args['order']   = ( strtoupper( $order ) === 'DESC' ) ? 'DESC' : 'ASC';
+    $args['orderby'] = in_array( $orderby, [ 'title', 'date' ], true ) ? $orderby : 'title';
+    $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
 
-    // Filtri tassonomia
     $tax_query = [];
-    foreach ( [ 'mecspe_settore', 'mecspe_padiglione' ] as $tax ) {
+    $taxonomies = array_keys( mecspe_get_tax_filters() );
+    foreach ( $taxonomies as $tax ) {
         $values = array_filter( array_map( 'sanitize_text_field', (array)( $_REQUEST[ $tax ] ?? [] ) ) );
         if ( ! empty( $values ) ) {
-            $tax_query[] = [
-                'taxonomy' => $tax,
-                'field'    => 'slug',
-                'terms'    => $values,
-            ];
+            $tax_query[] = [ 'taxonomy' => $tax, 'field' => 'slug', 'terms' => $values ];
         }
     }
     if ( ! empty( $tax_query ) ) {
@@ -360,7 +384,7 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
 }
 
 /* =========================================================
-   8. AJAX HANDLER
+   8. AJAX
    ========================================================= */
 add_action( 'wp_ajax_mecspe_filter',        'mecspe_ajax_filter' );
 add_action( 'wp_ajax_nopriv_mecspe_filter', 'mecspe_ajax_filter' );
@@ -369,16 +393,13 @@ function mecspe_ajax_filter() {
 
     $per_page = 12;
     $paged    = max( 1, (int)( $_REQUEST['paged'] ?? 1 ) );
-    $args     = mecspe_build_query_args( $per_page, $paged );
-    $query    = new WP_Query( $args );
+    $query    = new WP_Query( mecspe_build_query_args( $per_page, $paged ) );
 
     ob_start();
     mecspe_render_cards( $query );
-    $html = ob_get_clean();
-    wp_reset_postdata();
 
     wp_send_json_success( [
-        'html'      => $html,
+        'html'      => ob_get_clean(),
         'found'     => $query->found_posts,
         'max_pages' => $query->max_num_pages,
         'paged'     => $paged,
@@ -386,10 +407,42 @@ function mecspe_ajax_filter() {
 }
 
 /* =========================================================
-   9. FLUSH REWRITE RULES
+   9. DEBUG SHORTCODE  [mecspe_debug]  (solo admin)
+   ========================================================= */
+add_shortcode( 'mecspe_debug', function() {
+    if ( ! current_user_can( 'manage_options' ) ) return '';
+
+    $post = get_posts( [ 'post_type' => MECSPE_POST_TYPE, 'posts_per_page' => 1 ] );
+    if ( empty( $post ) ) return '<p>Nessun post trovato per il tipo: <strong>' . MECSPE_POST_TYPE . '</strong></p>';
+
+    $id   = $post[0]->ID;
+    $meta = get_post_meta( $id );
+    $taxs = get_object_taxonomies( MECSPE_POST_TYPE );
+
+    ob_start(); ?>
+    <div style="background:#f5f5f5;border:1px solid #ccc;padding:16px;font-family:monospace;font-size:13px;margin:20px 0">
+        <strong>DEBUG — Post ID <?php echo $id; ?> (<?php echo esc_html( $post[0]->post_title ); ?>)</strong>
+        <hr style="margin:10px 0">
+        <strong>META KEYS disponibili:</strong><br>
+        <?php foreach ( $meta as $key => $val ) : ?>
+            <span style="color:#006"><?php echo esc_html( $key ); ?></span>
+            = <?php echo esc_html( is_array($val) ? $val[0] : $val ); ?><br>
+        <?php endforeach; ?>
+        <hr style="margin:10px 0">
+        <strong>TASSONOMIE sul CPT:</strong><br>
+        <?php foreach ( $taxs as $t ) : ?>
+            <?php $terms = get_the_terms( $id, $t ); ?>
+            <span style="color:#006"><?php echo esc_html( $t ); ?></span>
+            = <?php echo $terms && !is_wp_error($terms) ? esc_html( implode(', ', wp_list_pluck($terms,'name')) ) : '(nessuno)'; ?><br>
+        <?php endforeach; ?>
+    </div>
+    <?php return ob_get_clean();
+} );
+
+/* =========================================================
+   10. FLUSH REWRITE
    ========================================================= */
 register_activation_hook( __FILE__, function () {
-    mecspe_register_cpt();
     mecspe_register_taxonomies();
     flush_rewrite_rules();
 } );
