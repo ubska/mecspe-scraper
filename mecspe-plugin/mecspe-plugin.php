@@ -104,44 +104,27 @@ function mecspe_render_archive( int $per_page = 12 ) {
 
         <!-- ════ TOP BAR ════ -->
         <div class="mecspe-topbar">
-
-            <div class="mecspe-search-wrap">
-                <span class="mecspe-search-icon">
+            <span class="mecspe-results-count" id="mecspe-count">
+                <?php echo $query->found_posts; ?> veicoli trovati
+            </span>
+            <div class="mecspe-topbar-right">
+                <label class="mecspe-label-inline" for="mecspe-orderby">Ordina:</label>
+                <select id="mecspe-orderby" class="mecspe-select">
+                    <option value="title-ASC"  <?php selected( ($_GET['mecspe_order'] ?? 'title-ASC'), 'title-ASC' ); ?>>A &ndash; Z</option>
+                    <option value="title-DESC" <?php selected( ($_GET['mecspe_order'] ?? ''), 'title-DESC' ); ?>>Z &ndash; A</option>
+                    <option value="date-DESC"  <?php selected( ($_GET['mecspe_order'] ?? ''), 'date-DESC' ); ?>>Più recenti</option>
+                </select>
+                <button class="mecspe-btn-toggle-sidebar" id="mecspe-toggle-sidebar">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        <line x1="4" y1="6" x2="20" y2="6"/>
+                        <line x1="8" y1="12" x2="20" y2="12"/>
+                        <line x1="12" y1="18" x2="20" y2="18"/>
                     </svg>
-                </span>
-                <input type="text" id="mecspe-search"
-                       placeholder="Cerca prodotto o espositore…"
-                       value="<?php echo esc_attr( $_GET['mecspe_s'] ?? '' ); ?>"
-                       autocomplete="off">
+                    Filtri
+                    <span class="mecspe-filter-badge" id="mecspe-filter-badge" style="display:none">0</span>
+                </button>
             </div>
-
-            <div class="mecspe-topbar-controls">
-                <span class="mecspe-results-count" id="mecspe-count">
-                    <?php echo $query->found_posts; ?> prodotti trovati
-                </span>
-                <div class="mecspe-topbar-right">
-                    <label class="mecspe-label-inline" for="mecspe-orderby">Ordina:</label>
-                    <select id="mecspe-orderby" class="mecspe-select">
-                        <option value="title-ASC"  <?php selected( ($_GET['mecspe_order'] ?? 'title-ASC'), 'title-ASC' ); ?>>A &ndash; Z</option>
-                        <option value="title-DESC" <?php selected( ($_GET['mecspe_order'] ?? ''), 'title-DESC' ); ?>>Z &ndash; A</option>
-                        <option value="date-DESC"  <?php selected( ($_GET['mecspe_order'] ?? ''), 'date-DESC' ); ?>>Più recenti</option>
-                    </select>
-                    <button class="mecspe-btn-toggle-sidebar" id="mecspe-toggle-sidebar">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="4" y1="6" x2="20" y2="6"/>
-                            <line x1="8" y1="12" x2="20" y2="12"/>
-                            <line x1="12" y1="18" x2="20" y2="18"/>
-                        </svg>
-                        Filtri
-                        <span class="mecspe-filter-badge" id="mecspe-filter-badge" style="display:none">0</span>
-                    </button>
-                </div>
-            </div>
-
         </div><!-- /.mecspe-topbar -->
 
         <!-- ════ LAYOUT ════ -->
@@ -346,12 +329,18 @@ function mecspe_get_meta_filters(): array {
     /* Gruppi: meta_key => label
        Per i repeater ACF si usa il sub-campo _0_testo */
     $groups = [
-        'marche_0_testo'        => 'Marca',
-        'cambi_0_testo'         => 'Cambio',
-        'cabine_0_testo'        => 'Cabina',
-        'allestimenti_0_testo'  => 'Allestimento',
-        'tipi_offerta_0_testo'  => 'Tipo offerta',
-        'prima_immatricolazione'=> 'Anno immatricolazione',
+        'marche_0_testo'          => 'Marca',
+        'prima_immatricolazione'  => 'Anno immatricolazione',
+        'cabine_0_testo'          => 'Cabina',
+        'cambi_0_testo'           => 'Cambio',
+        'allestimenti_0_testo'    => 'Allestimento',
+        'tipi_offerta_0_testo'    => 'Tipo offerta',
+        'motori_0_testo'          => 'Motore',
+        'equipaggiamenti_0_testo' => 'Equipaggiamento',
+        'pneumatici_0_testo'      => 'Pneumatici',
+        'fender_laterali_0_testo' => 'Fender laterale',
+        'elenco_spoiler_0_testo'  => 'Spoiler',
+        'minigonne_0_testo'       => 'Minigonne',
     ];
 
     global $wpdb;
@@ -397,9 +386,6 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
         'paged'          => $paged,
         'post_status'    => 'publish',
     ];
-
-    $s = sanitize_text_field( $_REQUEST['mecspe_s'] ?? '' );
-    if ( $s ) $args['s'] = $s;
 
     $order_raw = sanitize_text_field( $_REQUEST['mecspe_order'] ?? 'title-ASC' );
     [ $orderby, $order ] = array_pad( explode( '-', $order_raw, 2 ), 2, 'ASC' );

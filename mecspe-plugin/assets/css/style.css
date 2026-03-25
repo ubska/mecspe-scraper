@@ -16,6 +16,7 @@
 .mecspe-topbar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
     background: #fff;
@@ -23,25 +24,6 @@
     padding: 10px 16px;
     margin-bottom: 16px;
 }
-.mecspe-search-wrap {
-    position: relative;
-    flex: 1 1 220px;
-}
-.mecspe-search-wrap input {
-    width: 100%;
-    padding: 8px 12px 8px 34px;
-    border: 1px solid #ccc;
-    font-size: 13px;
-    color: #333;
-    background: #f9f9f9;
-}
-.mecspe-search-wrap input:focus { outline: none; border-color: #999; background: #fff; }
-.mecspe-search-icon {
-    position: absolute; left: 9px; top: 50%;
-    transform: translateY(-50%);
-    color: #999; display: flex; pointer-events: none;
-}
-.mecspe-search-icon svg { width: 16px; height: 16px; }
 .mecspe-topbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .mecspe-results-count { font-size: 13px; color: #666; }
 .mecspe-select {

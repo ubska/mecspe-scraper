@@ -30,7 +30,6 @@
 
         state.maxPages = parseInt($loadMore.data('max') || 1, 10);
 
-        initSearch();
         initOrderby();
         initCheckboxes();
         initKmRange();
@@ -40,21 +39,6 @@
         syncChips();
         syncBadge();
     });
-
-    /* ============================================================
-       SEARCH
-       ============================================================ */
-    function initSearch() {
-        $('#mecspe-search').on('input', function () {
-            clearTimeout(searchTimer);
-            var val = $(this).val();
-            searchTimer = setTimeout(function () {
-                state.s     = val;
-                state.paged = 1;
-                fetch(false);
-            }, 400);
-        });
-    }
 
     /* ============================================================
        ORDINA
@@ -133,7 +117,6 @@
             action:        'mecspe_filter',
             nonce:         MecspeAjax.nonce,
             paged:         state.paged,
-            mecspe_s:      state.s,
             mecspe_order:  state.order,
             mecspe_km_min: $('#mecspe-km-min').val() || '',
             mecspe_km_max: $('#mecspe-km-max').val() || '',
@@ -293,9 +276,7 @@
     /* ── Reset ── */
     $(document).on('click', '#mecspe-reset', function () {
         $('.mecspe-filter-check').prop('checked', false);
-        $('#mecspe-search').val('');
         $('#mecspe-km-min, #mecspe-km-max').val('');
-        state.s     = '';
         state.taxes = {};
         state.paged = 1;
         fetch(false);
