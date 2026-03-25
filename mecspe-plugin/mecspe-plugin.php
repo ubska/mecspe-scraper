@@ -340,8 +340,8 @@ function mecspe_render_cards( WP_Query $query ) {
 function mecspe_get_tax_filters(): array {
     $result = [];
     $taxonomies = get_object_taxonomies( MECSPE_POST_TYPE, 'objects' );
-    /* Escludi tassonomie interne WP */
-    $exclude = [ 'post_format', 'post_tag' ];
+    /* Escludi tassonomie interne WP e categorie blog */
+    $exclude = [ 'post_format', 'post_tag', 'category' ];
     foreach ( $taxonomies as $tax ) {
         if ( in_array( $tax->name, $exclude, true ) ) continue;
         $terms = get_terms( [ 'taxonomy' => $tax->name, 'hide_empty' => true, 'number' => 100 ] );
@@ -413,7 +413,40 @@ function mecspe_ajax_filter() {
 }
 
 /* =========================================================
-   9. FLUSH REWRITE
+   9. DEBUG SHORTCODE  [mecspe_debug]  (solo admin)
+   ========================================================= */
+add_shortcode( 'mecspe_debug', function() {
+    if ( ! current_user_can( 'manage_options' ) ) return '';
+
+    $post = get_posts( [ 'post_type' => MECSPE_POST_TYPE, 'posts_per_page' => 1 ] );
+    if ( empty( $post ) ) return '<p>Nessun post trovato per il tipo: <strong>' . MECSPE_POST_TYPE . '</strong></p>';
+
+    $id   = $post[0]->ID;
+    $meta = get_post_meta( $id );
+    $taxs = get_object_taxonomies( MECSPE_POST_TYPE );
+
+    ob_start(); ?>
+    <div style="background:#f5f5f5;border:1px solid #ccc;padding:16px;font-family:monospace;font-size:13px;margin:20px 0">
+        <strong>DEBUG — Post ID <?php echo $id; ?> (<?php echo esc_html( $post[0]->post_title ); ?>)</strong>
+        <hr style="margin:10px 0">
+        <strong>META KEYS disponibili:</strong><br>
+        <?php foreach ( $meta as $key => $val ) : ?>
+            <span style="color:#006"><?php echo esc_html( $key ); ?></span>
+            = <?php echo esc_html( is_array($val) ? $val[0] : $val ); ?><br>
+        <?php endforeach; ?>
+        <hr style="margin:10px 0">
+        <strong>TASSONOMIE sul CPT:</strong><br>
+        <?php foreach ( $taxs as $t ) : ?>
+            <?php $terms = get_the_terms( $id, $t ); ?>
+            <span style="color:#006"><?php echo esc_html( $t ); ?></span>
+            = <?php echo $terms && !is_wp_error($terms) ? esc_html( implode(', ', wp_list_pluck($terms,'name')) ) : '(nessuno)'; ?><br>
+        <?php endforeach; ?>
+    </div>
+    <?php return ob_get_clean();
+} );
+
+/* =========================================================
+   10. FLUSH REWRITE
    ========================================================= */
 register_activation_hook( __FILE__, function () {
     mecspe_register_taxonomies();
