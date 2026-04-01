@@ -2,8 +2,8 @@
 /**
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
- * Description:  Visualizza i prodotti MECSPE con filtri laterali e superiori.
- * Version:      1.1.0
+ * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
+ * Version:      2.0.0
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -16,33 +16,22 @@ define( 'MECSPE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'MECSPE_POST_TYPE',  'prodotti' );
 
 /* =========================================================
-   1. TASSONOMIE  (aggiuntive, se non già registrate dallo scraper)
+   1. TASSONOMIE AGGIUNTIVE (se non già registrate)
    ========================================================= */
 add_action( 'init', 'mecspe_register_taxonomies', 20 );
 function mecspe_register_taxonomies() {
-    if ( ! taxonomy_exists( 'mecspe_categoria' ) ) {
-        register_taxonomy( 'mecspe_categoria', MECSPE_POST_TYPE, [
-            'labels'       => [
-                'name'          => 'Categorie MECSPE',
-                'singular_name' => 'Categoria',
-                'all_items'     => 'Tutte le categorie',
-            ],
-            'hierarchical' => true,
-            'show_in_rest' => true,
-            'rewrite'      => [ 'slug' => 'mecspe-categoria' ],
-        ] );
-    }
-    if ( ! taxonomy_exists( 'mecspe_padiglione' ) ) {
-        register_taxonomy( 'mecspe_padiglione', MECSPE_POST_TYPE, [
-            'labels'       => [
-                'name'          => 'Padiglioni',
-                'singular_name' => 'Padiglione',
-                'all_items'     => 'Tutti i padiglioni',
-            ],
-            'hierarchical' => false,
-            'show_in_rest' => true,
-            'rewrite'      => [ 'slug' => 'mecspe-padiglione' ],
-        ] );
+    foreach ( [
+        'mecspe_categoria'   => 'Categorie MECSPE',
+        'mecspe_padiglione'  => 'Padiglioni',
+    ] as $slug => $label ) {
+        if ( ! taxonomy_exists( $slug ) ) {
+            register_taxonomy( $slug, MECSPE_POST_TYPE, [
+                'label'        => $label,
+                'hierarchical' => true,
+                'show_in_rest' => true,
+                'rewrite'      => [ 'slug' => $slug ],
+            ] );
+        }
     }
 }
 
@@ -51,36 +40,19 @@ function mecspe_register_taxonomies() {
    ========================================================= */
 add_action( 'wp_enqueue_scripts', 'mecspe_enqueue_assets' );
 function mecspe_enqueue_assets() {
-    wp_enqueue_style(
-        'mecspe-style',
-        MECSPE_PLUGIN_URL . 'assets/css/style.css',
-        [], '1.1.0'
-    );
-    wp_enqueue_script(
-        'mecspe-filters',
-        MECSPE_PLUGIN_URL . 'assets/js/filters.js',
-        [ 'jquery' ], '1.1.0', true
-    );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.0' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.0', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
-        'strings' => [
-            'found_singular' => 'prodotto trovato',
-            'found_plural'   => 'prodotti trovati',
-            'load_more'      => 'Carica altri',
-            'loading'        => 'Caricamento…',
-            'error'          => 'Errore nel caricamento. Riprova.',
-        ],
     ] );
 }
 
 /* =========================================================
    3. SHORTCODE  [mecspe_prodotti]
    ========================================================= */
-add_shortcode( 'mecspe_prodotti', 'mecspe_shortcode' );
-/* alias legacy */
+add_shortcode( 'mecspe_prodotti',   'mecspe_shortcode' );
 add_shortcode( 'mecspe_espositori', 'mecspe_shortcode' );
-
 function mecspe_shortcode( $atts ) {
     $atts = shortcode_atts( [ 'per_page' => 12 ], $atts );
     ob_start();
@@ -92,70 +64,73 @@ function mecspe_shortcode( $atts ) {
    4. RENDER ARCHIVIO
    ========================================================= */
 function mecspe_render_archive( int $per_page = 12 ) {
-
-    /* Raccogli filtri meta dai campi ACF del truck */
     $meta_filters = mecspe_get_meta_filters();
-
     $args  = mecspe_build_query_args( $per_page );
     $query = new WP_Query( $args );
 
+    /* Opzioni per i dropdown in cima */
+    $dd_marca  = mecspe_get_meta_options( 'marche_0_testo' );
+    $dd_anno   = mecspe_get_year_options( 'prima_immatricolazione' );
+    $dd_cambio = mecspe_get_meta_options( 'cambi_0_testo' );
+    $dd_allest = mecspe_get_meta_options( 'allestimenti_0_testo' );
+
+    $sel_marca  = sanitize_text_field( $_GET['dd_marca']  ?? '' );
+    $sel_anno   = sanitize_text_field( $_GET['dd_anno']   ?? '' );
+    $sel_cambio = sanitize_text_field( $_GET['dd_cambio'] ?? '' );
+    $sel_allest = sanitize_text_field( $_GET['dd_allest'] ?? '' );
     ?>
     <div class="mecspe-wrap" id="mecspe-wrap">
 
-        <!-- ════ TOP BAR ════ -->
-        <div class="mecspe-topbar">
-            <span class="mecspe-results-count" id="mecspe-count">
-                <?php echo $query->found_posts; ?> veicoli trovati
-            </span>
-            <div class="mecspe-topbar-right">
-                <label class="mecspe-label-inline" for="mecspe-orderby">Ordina:</label>
-                <select id="mecspe-orderby" class="mecspe-select">
-                    <option value="title-ASC"  <?php selected( ($_GET['mecspe_order'] ?? 'title-ASC'), 'title-ASC' ); ?>>A &ndash; Z</option>
-                    <option value="title-DESC" <?php selected( ($_GET['mecspe_order'] ?? ''), 'title-DESC' ); ?>>Z &ndash; A</option>
-                    <option value="date-DESC"  <?php selected( ($_GET['mecspe_order'] ?? ''), 'date-DESC' ); ?>>Più recenti</option>
-                </select>
-                <button class="mecspe-btn-toggle-sidebar" id="mecspe-toggle-sidebar">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="4" y1="6" x2="20" y2="6"/>
-                        <line x1="8" y1="12" x2="20" y2="12"/>
-                        <line x1="12" y1="18" x2="20" y2="18"/>
-                    </svg>
-                    Filtri
-                    <span class="mecspe-filter-badge" id="mecspe-filter-badge" style="display:none">0</span>
-                </button>
-            </div>
-        </div><!-- /.mecspe-topbar -->
+        <!-- ══ BARRA DROPDOWN IN CIMA ══ -->
+        <div class="mecspe-dd-bar">
+            <select class="mecspe-dd" id="dd_marca">
+                <option value="">Produttore</option>
+                <?php foreach ( $dd_marca as $v ) : ?>
+                <option value="<?php echo esc_attr($v); ?>" <?php selected($sel_marca,$v); ?>><?php echo esc_html($v); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select class="mecspe-dd" id="dd_anno">
+                <option value="">Immatricolazione</option>
+                <?php foreach ( $dd_anno as $v ) : ?>
+                <option value="<?php echo esc_attr($v); ?>" <?php selected($sel_anno,$v); ?>><?php echo esc_html($v); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select class="mecspe-dd" id="dd_cambio">
+                <option value="">Cambio</option>
+                <?php foreach ( $dd_cambio as $v ) : ?>
+                <option value="<?php echo esc_attr($v); ?>" <?php selected($sel_cambio,$v); ?>><?php echo esc_html($v); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select class="mecspe-dd" id="dd_allest">
+                <option value="">Allestimento</option>
+                <?php foreach ( $dd_allest as $v ) : ?>
+                <option value="<?php echo esc_attr($v); ?>" <?php selected($sel_allest,$v); ?>><?php echo esc_html($v); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button class="mecspe-dd-btn" id="mecspe-dd-search">
+                &#128269; RICERCA
+            </button>
+        </div>
 
-        <!-- ════ LAYOUT ════ -->
-        <div class="mecspe-layout" id="mecspe-layout">
+        <h2 class="mecspe-page-title">Risultato della ricerca</h2>
 
-            <!-- ── SIDEBAR ── -->
+        <!-- ══ LAYOUT ══ -->
+        <div class="mecspe-layout">
+
+            <!-- SIDEBAR -->
             <aside class="mecspe-sidebar" id="mecspe-sidebar">
-                <div class="mecspe-sidebar-header">
-                    <h3>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-                        </svg>
-                        Filtra per
-                    </h3>
-                    <button class="mecspe-reset-btn" id="mecspe-reset">Azzera tutto</button>
-                </div>
+                <div class="mecspe-sidebar-title">Filtra per</div>
 
-                <div id="mecspe-active-filters"></div>
-
-                <!-- Filtro KM -->
-                <div class="mecspe-filter-group">
-                    <button class="mecspe-filter-group-toggle" aria-expanded="true">
-                        KM percorsi
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <!-- Range KM -->
+                <div class="mecspe-acc-item">
+                    <button class="mecspe-acc-toggle" aria-expanded="false">
+                        <span>&#8250;</span> KM percorsi
                     </button>
-                    <div class="mecspe-filter-options">
+                    <div class="mecspe-acc-body" style="display:none">
                         <div class="mecspe-km-range">
-                            <input type="number" id="mecspe-km-min" class="mecspe-km-input" placeholder="Min KM" min="0" step="10000" value="<?php echo esc_attr( $_GET['mecspe_km_min'] ?? '' ); ?>">
+                            <input type="number" id="mecspe-km-min" class="mecspe-km-input" placeholder="Min" min="0" step="10000" value="<?php echo esc_attr($_GET['mecspe_km_min'] ?? ''); ?>">
                             <span>—</span>
-                            <input type="number" id="mecspe-km-max" class="mecspe-km-input" placeholder="Max KM" min="0" step="10000" value="<?php echo esc_attr( $_GET['mecspe_km_max'] ?? '' ); ?>">
+                            <input type="number" id="mecspe-km-max" class="mecspe-km-input" placeholder="Max" min="0" step="10000" value="<?php echo esc_attr($_GET['mecspe_km_max'] ?? ''); ?>">
                         </div>
                     </div>
                 </div>
@@ -164,170 +139,205 @@ function mecspe_render_archive( int $per_page = 12 ) {
                     if ( empty( $filter['options'] ) ) continue;
                     $active = (array)( $_GET[ 'mf_' . $meta_key ] ?? [] );
                 ?>
-                <div class="mecspe-filter-group">
-                    <button class="mecspe-filter-group-toggle" aria-expanded="true">
-                        <?php echo esc_html( $filter['label'] ); ?>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <div class="mecspe-acc-item">
+                    <button class="mecspe-acc-toggle" aria-expanded="false">
+                        <span>&#8250;</span> <?php echo esc_html( $filter['label'] ); ?>
                     </button>
-                    <div class="mecspe-filter-options">
+                    <div class="mecspe-acc-body" style="display:none">
                         <?php foreach ( $filter['options'] as $val ) : ?>
-                        <label class="mecspe-checkbox-label">
+                        <label class="mecspe-cb-label">
                             <input type="checkbox"
                                    class="mecspe-filter-check"
-                                   data-taxonomy="mf_<?php echo esc_attr( $meta_key ); ?>"
-                                   data-label="<?php echo esc_attr( $val ); ?>"
-                                   value="<?php echo esc_attr( $val ); ?>"
-                                   <?php checked( in_array( $val, $active ) ); ?>>
-                            <span class="mecspe-checkbox-custom"></span>
-                            <span class="mecspe-checkbox-text"><?php echo esc_html( $val ); ?></span>
+                                   data-taxonomy="mf_<?php echo esc_attr($meta_key); ?>"
+                                   data-label="<?php echo esc_attr($val); ?>"
+                                   value="<?php echo esc_attr($val); ?>"
+                                   <?php checked( in_array($val, $active) ); ?>>
+                            <?php echo esc_html($val); ?>
                         </label>
                         <?php endforeach; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
 
-            </aside><!-- /.mecspe-sidebar -->
+            </aside>
 
-            <!-- ── MAIN ── -->
+            <!-- MAIN -->
             <div class="mecspe-main" id="mecspe-main">
-                <div class="mecspe-grid" id="mecspe-grid">
+
+                <!-- Barra risultati -->
+                <div class="mecspe-results-bar">
+                    <button class="mecspe-cancella-btn" id="mecspe-reset">&#10005; CANCELLA FILTRI</button>
+                    <span class="mecspe-count" id="mecspe-count">Risultati: <?php echo $query->found_posts; ?></span>
+                    <select id="mecspe-orderby" class="mecspe-select-sort">
+                        <option value="title-ASC"  <?php selected(($_GET['mecspe_order'] ?? 'title-ASC'),'title-ASC'); ?>>Ordina per: A – Z</option>
+                        <option value="title-DESC" <?php selected(($_GET['mecspe_order'] ?? ''),'title-DESC'); ?>>Ordina per: Z – A</option>
+                        <option value="date-DESC"  <?php selected(($_GET['mecspe_order'] ?? ''),'date-DESC'); ?>>Più recenti</option>
+                    </select>
+                </div>
+
+                <!-- Lista veicoli -->
+                <div class="mecspe-list" id="mecspe-grid">
                     <?php mecspe_render_cards( $query ); ?>
                 </div>
 
                 <div class="mecspe-pagination" id="mecspe-pagination"
                      style="<?php echo $query->max_num_pages <= 1 ? 'display:none' : ''; ?>">
                     <button class="mecspe-load-more" id="mecspe-load-more"
-                            data-page="1"
-                            data-max="<?php echo (int) $query->max_num_pages; ?>">
+                            data-page="1" data-max="<?php echo (int)$query->max_num_pages; ?>">
                         Carica altri
                     </button>
                 </div>
-            </div><!-- /.mecspe-main -->
+            </div>
+        </div>
 
-        </div><!-- /.mecspe-layout -->
-
-        <!-- overlay mobile -->
         <div class="mecspe-overlay" id="mecspe-overlay"></div>
-
-    </div><!-- /.mecspe-wrap -->
+    </div>
     <?php
     wp_reset_postdata();
 }
 
 /* =========================================================
-   5. CARD SINGOLA
+   5. CARD ORIZZONTALE
    ========================================================= */
 function mecspe_render_cards( WP_Query $query ) {
     if ( ! $query->have_posts() ) {
-        echo '<div class="mecspe-no-results">'
-           . '<p>Nessun prodotto trovato con i filtri selezionati.</p>'
-           . '<p>Prova a rimuovere qualche filtro.</p>'
-           . '</div>';
+        echo '<div class="mecspe-no-results"><p>Nessun veicolo trovato con i filtri selezionati.</p></div>';
         return;
     }
-
     while ( $query->have_posts() ) {
         $query->the_post();
-        $id = get_the_ID();
+        $id  = get_the_ID();
+        $acf = function_exists('get_field');
 
-        /* Leggi campi ACF del camion */
-        $acf = function_exists( 'get_field' );
-        $km         = $acf ? get_field( 'km_percorsi', $id )         : get_post_meta( $id, 'km_percorsi', true );
-        $anno       = $acf ? get_field( 'prima_immatricolazione', $id): get_post_meta( $id, 'prima_immatricolazione', true );
-        $cavalli    = $acf ? get_field( 'cavalli', $id )              : get_post_meta( $id, 'cavalli', true );
-        $prezzo     = $acf ? get_field( 'prezzo', $id )               : get_post_meta( $id, 'prezzo', true );
-        $trattativa = $acf ? get_field( 'trattativa_in_sede', $id )   : get_post_meta( $id, 'trattativa_in_sede', true );
-        $pronto     = $acf ? get_field( 'veicolo_pronto', $id )       : get_post_meta( $id, 'veicolo_pronto', true );
+        $modello    = $acf ? get_field('modello', $id)                 : get_post_meta($id,'modello',true);
+        $km         = $acf ? get_field('km_percorsi', $id)             : get_post_meta($id,'km_percorsi',true);
+        $anno_raw   = $acf ? get_field('prima_immatricolazione', $id)  : get_post_meta($id,'prima_immatricolazione',true);
+        $cavalli    = $acf ? get_field('cavalli', $id)                 : get_post_meta($id,'cavalli',true);
+        $prezzo     = $acf ? get_field('prezzo', $id)                  : get_post_meta($id,'prezzo',true);
+        $trattativa = $acf ? get_field('trattativa_in_sede', $id)      : get_post_meta($id,'trattativa_in_sede',true);
+        $pronto     = $acf ? get_field('veicolo_pronto', $id)          : get_post_meta($id,'veicolo_pronto',true);
+        $targa      = $acf ? get_field('targa', $id)                   : get_post_meta($id,'targa',true);
+        $cod        = $acf ? get_field('codice_interno', $id)          : get_post_meta($id,'codice_interno',true);
 
-        /* Marca dal repeater ACF */
-        $marca = '';
-        if ( $acf ) {
-            $marche = get_field( 'marche', $id );
-            if ( ! empty( $marche ) && is_array( $marche ) )
-                $marca = $marche[0]['testo'] ?? '';
-        }
+        /* Repeater: prendi primo valore testo */
+        $marca    = mecspe_first_repeater( $id, 'marche',         'testo', $acf );
+        $cambio   = mecspe_first_repeater( $id, 'cambi',          'testo', $acf );
+        $motore   = mecspe_first_repeater( $id, 'motori',         'testo', $acf );
+        $cabina   = mecspe_first_repeater( $id, 'cabine',         'testo', $acf );
+        $allest   = mecspe_first_repeater( $id, 'allestimenti',   'testo', $acf );
+        $offerta  = mecspe_first_repeater( $id, 'tipi_offerta',   'testo', $acf );
 
-        /* Tag come badge (es. "Usato CGT Trucks") */
-        $tags = get_the_terms( $id, 'post_tag' );
-        $tax_badges = ( $tags && ! is_wp_error( $tags ) ) ? wp_list_pluck( $tags, 'name' ) : [];
+        /* Anno: estrai solo anno numerico */
+        $anno = '';
+        if ( $anno_raw && preg_match('/\d{4}/', $anno_raw, $m) ) $anno = $m[0];
+
+        /* KM formattato */
+        $km_fmt = $km ? number_format((float)preg_replace('/[^\d]/','',$km), 0, ',', '.') : '';
+
+        /* Nome sopra immagine */
+        $img_label = trim( ($marca ? $marca . ' ' : '') . ($modello ?: get_the_title()) );
         ?>
-        <article class="mecspe-card" id="post-<?php echo $id; ?>">
+        <div class="mecspe-card">
 
-            <a href="<?php the_permalink(); ?>" class="mecspe-card-thumb-link">
-                <div class="mecspe-card-thumb">
+            <!-- Colonna immagine -->
+            <div class="mecspe-card-left">
+                <div class="mecspe-card-img-label"><?php echo esc_html( strtoupper($img_label) ); ?></div>
+                <a href="<?php the_permalink(); ?>" class="mecspe-card-img-wrap">
                     <?php if ( has_post_thumbnail() ) : ?>
-                        <?php the_post_thumbnail( 'medium', [ 'class' => 'mecspe-card-img', 'loading' => 'lazy' ] ); ?>
+                        <?php the_post_thumbnail('medium', ['class'=>'mecspe-card-img','loading'=>'lazy']); ?>
                     <?php else : ?>
-                        <div class="mecspe-card-placeholder">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-                            </svg>
-                        </div>
+                        <div class="mecspe-card-no-img">Nessuna foto</div>
                     <?php endif; ?>
+                </a>
+                <!-- Badge sotto immagine -->
+                <div class="mecspe-card-badges">
+                    <?php if ($km_fmt) : ?><span class="mecspe-badge">Km <?php echo esc_html($km_fmt); ?></span><?php endif; ?>
+                    <?php if ($anno)   : ?><span class="mecspe-badge">Anno <?php echo esc_html($anno); ?></span><?php endif; ?>
+                    <?php if ($motore) : ?><span class="mecspe-badge"><?php echo esc_html($motore); ?></span><?php endif; ?>
                 </div>
-            </a>
-
-            <div class="mecspe-card-body">
-                <?php if ( $marca ) : ?>
-                <div class="mecspe-card-brand"><?php echo esc_html( $marca ); ?></div>
-                <?php endif; ?>
-
-                <h2 class="mecspe-card-title">
-                    <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
-                </h2>
-
-                <?php if ( ! empty( $tax_badges ) ) : ?>
-                <div class="mecspe-card-tags">
-                    <?php foreach ( array_slice( $tax_badges, 0, 2 ) as $b ) : ?>
-                    <span class="mecspe-tag"><?php echo esc_html( $b ); ?></span>
-                    <?php endforeach; ?>
+                <!-- Prezzo / Trattativa -->
+                <?php if ($trattativa) : ?>
+                <div class="mecspe-card-trattativa">Trattativa Riservata</div>
+                <?php elseif ($prezzo) : ?>
+                <div class="mecspe-card-prezzo">
+                    Tuo a <strong>&euro; <?php echo esc_html(number_format((float)preg_replace('/[^\d]/','',$prezzo),0,',','.')); ?></strong>
                 </div>
                 <?php endif; ?>
+            </div>
 
-                <ul class="mecspe-card-specs">
-                    <?php if ( $anno ) : ?>
-                    <li><strong>Immatricolazione:</strong> <?php echo esc_html( $anno ); ?></li>
+            <!-- Colonna contenuto -->
+            <div class="mecspe-card-right">
+                <div class="mecspe-card-head">
+                    <div>
+                        <h2 class="mecspe-card-title">
+                            <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                            <?php if ($offerta) : ?><span class="mecspe-usato-badge"><?php echo esc_html($offerta); ?></span><?php endif; ?>
+                        </h2>
+                        <p class="mecspe-card-subtitle">
+                            <?php echo esc_html( implode(' &nbsp;', array_filter([$cabina, $targa ? 'Rif: '.$targa : '', $cod ? 'Cod: '.$cod : ''])) ); ?>
+                        </p>
+                    </div>
+                    <?php if ($prezzo && !$trattativa) : ?>
+                    <div class="mecspe-card-price-top">&euro; <?php echo esc_html(number_format((float)preg_replace('/[^\d]/','',$prezzo),0,',','.')); ?></div>
                     <?php endif; ?>
-                    <?php if ( $km ) : ?>
-                    <li><strong>KM:</strong> <?php echo esc_html( number_format( (float)str_replace('.','',str_replace(',','',$km)), 0, ',', '.' ) ); ?> km</li>
-                    <?php endif; ?>
-                    <?php if ( $cavalli ) : ?>
-                    <li><strong>Cavalli:</strong> <?php echo esc_html( $cavalli ); ?> CV</li>
-                    <?php endif; ?>
-                    <?php if ( $pronto ) : ?>
-                    <li>&#10003; Veicolo pronto</li>
-                    <?php endif; ?>
-                </ul>
+                </div>
 
-                <div class="mecspe-card-price">
-                    <?php if ( $trattativa ) : ?>
-                        Trattativa in sede
-                    <?php elseif ( $prezzo ) : ?>
-                        &euro; <?php echo esc_html( number_format( (float)str_replace('.','',str_replace(',','',$prezzo)), 0, ',', '.' ) ); ?>
-                        <small>+ IVA</small>
-                    <?php else : ?>
-                        <span style="color:#999;font-size:13px">Contattaci per il prezzo</span>
-                    <?php endif; ?>
+                <div class="mecspe-card-specs">
+                    <?php if ($anno)   : ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#128197;</span> <?php echo esc_html($anno); ?></div><?php endif; ?>
+                    <?php if ($cavalli): ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#9881;</span> <?php echo esc_html($cavalli); ?> CV</div><?php endif; ?>
+                    <?php if ($km_fmt) : ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#128338;</span> <?php echo esc_html($km_fmt); ?> Km</div><?php endif; ?>
+                    <?php if ($motore) : ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#8250;</span> <?php echo esc_html($motore); ?></div><?php endif; ?>
+                    <?php if ($allest) : ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#8250;</span> <?php echo esc_html($allest); ?></div><?php endif; ?>
+                    <?php if ($cambio) : ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#8250;</span> <?php echo esc_html($cambio); ?></div><?php endif; ?>
+                    <?php if ($pronto) : ?><div class="mecspe-spec"><span class="mecspe-spec-icon">&#10003;</span> Veicolo pronto</div><?php endif; ?>
+                </div>
+
+                <div class="mecspe-card-footer">
+                    <a href="<?php the_permalink(); ?>" class="mecspe-btn-dettagli">DETTAGLI</a>
                 </div>
             </div>
 
-            <div class="mecspe-card-footer">
-                <a href="<?php the_permalink(); ?>" class="mecspe-btn-dettaglio">Scopri di più</a>
-            </div>
-
-        </article>
+        </div>
         <?php
     }
     wp_reset_postdata();
 }
 
 /* =========================================================
-   6. HELPER: filtri basati su meta ACF del truck
+   6. HELPERS META
    ========================================================= */
+function mecspe_first_repeater( int $id, string $field, string $subfield, bool $acf ): string {
+    if ( $acf ) {
+        $rows = get_field( $field, $id );
+        return ( is_array($rows) && ! empty($rows) ) ? ( $rows[0][$subfield] ?? '' ) : '';
+    }
+    return get_post_meta( $id, $field . '_0_' . $subfield, true ) ?: '';
+}
+
+function mecspe_get_meta_options( string $meta_key ): array {
+    global $wpdb;
+    $rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT pm.meta_value FROM {$wpdb->postmeta} pm
+         INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+         WHERE pm.meta_key = %s AND p.post_type = %s AND p.post_status = 'publish'
+           AND pm.meta_value != '' ORDER BY pm.meta_value ASC LIMIT 200",
+        $meta_key, MECSPE_POST_TYPE
+    ) );
+    return array_values( array_filter( $rows ) );
+}
+
+function mecspe_get_year_options( string $meta_key ): array {
+    $values = mecspe_get_meta_options( $meta_key );
+    $years  = [];
+    foreach ( $values as $v ) {
+        if ( preg_match('/\d{4}/', $v, $m) ) $years[] = $m[0];
+    }
+    $years = array_values( array_unique( $years ) );
+    rsort( $years );
+    return $years;
+}
+
 function mecspe_get_meta_filters(): array {
-    /* Gruppi: meta_key => label
-       Per i repeater ACF si usa il sub-campo _0_testo */
     $groups = [
         'marche_0_testo'          => 'Marca',
         'prima_immatricolazione'  => 'Anno immatricolazione',
@@ -342,36 +352,12 @@ function mecspe_get_meta_filters(): array {
         'elenco_spoiler_0_testo'  => 'Spoiler',
         'minigonne_0_testo'       => 'Minigonne',
     ];
-
-    global $wpdb;
     $result = [];
-    foreach ( $groups as $meta_key => $label ) {
-        $options = $wpdb->get_col( $wpdb->prepare(
-            "SELECT DISTINCT pm.meta_value
-             FROM {$wpdb->postmeta} pm
-             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-             WHERE pm.meta_key = %s
-               AND p.post_type = %s
-               AND p.post_status = 'publish'
-               AND pm.meta_value != ''
-             ORDER BY pm.meta_value ASC
-             LIMIT 100",
-            $meta_key, MECSPE_POST_TYPE
-        ) );
-
-        /* Per anno: estrai solo l'anno (ultime 4 cifre) */
-        if ( $meta_key === 'prima_immatricolazione' ) {
-            $years = [];
-            foreach ( $options as $v ) {
-                if ( preg_match( '/\d{4}/', $v, $m ) ) $years[] = $m[0];
-            }
-            $options = array_values( array_unique( $years ) );
-            rsort( $options ); // anni decrescenti
-        }
-
-        if ( ! empty( $options ) ) {
-            $result[ $meta_key ] = [ 'label' => $label, 'options' => $options ];
-        }
+    foreach ( $groups as $key => $label ) {
+        $options = ( $key === 'prima_immatricolazione' )
+            ? mecspe_get_year_options( $key )
+            : mecspe_get_meta_options( $key );
+        if ( ! empty($options) ) $result[$key] = [ 'label' => $label, 'options' => $options ];
     }
     return $result;
 }
@@ -388,45 +374,54 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
     ];
 
     $order_raw = sanitize_text_field( $_REQUEST['mecspe_order'] ?? 'title-ASC' );
-    [ $orderby, $order ] = array_pad( explode( '-', $order_raw, 2 ), 2, 'ASC' );
-    $args['orderby'] = in_array( $orderby, [ 'title', 'date' ], true ) ? $orderby : 'title';
-    $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
+    [ $orderby, $order ] = array_pad( explode('-', $order_raw, 2), 2, 'ASC' );
+    $args['orderby'] = in_array($orderby, ['title','date'], true) ? $orderby : 'title';
+    $args['order']   = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
 
-    /* Meta query dai filtri ACF */
     $meta_query = [ 'relation' => 'AND' ];
 
-    /* Filtri checkbox (mf_<meta_key>) */
-    $meta_groups = array_keys( mecspe_get_meta_filters() );
-    foreach ( $meta_groups as $meta_key ) {
-        $values = array_filter( array_map( 'sanitize_text_field', (array)( $_REQUEST[ 'mf_' . $meta_key ] ?? [] ) ) );
-        if ( empty( $values ) ) continue;
+    /* Dropdown top bar */
+    $dd_map = [
+        'dd_marca'  => 'marche_0_testo',
+        'dd_anno'   => 'prima_immatricolazione',
+        'dd_cambio' => 'cambi_0_testo',
+        'dd_allest' => 'allestimenti_0_testo',
+    ];
+    foreach ( $dd_map as $param => $meta_key ) {
+        $val = sanitize_text_field( $_REQUEST[$param] ?? '' );
+        if ( ! $val ) continue;
+        if ( $param === 'dd_anno' ) {
+            $meta_query[] = [ 'key' => $meta_key, 'value' => $val, 'compare' => 'LIKE' ];
+        } else {
+            $meta_query[] = [ 'key' => $meta_key, 'value' => $val, 'compare' => '=' ];
+        }
+    }
 
+    /* Checkbox sidebar */
+    foreach ( array_keys( mecspe_get_meta_filters() ) as $meta_key ) {
+        $values = array_filter( array_map('sanitize_text_field', (array)( $_REQUEST['mf_'.$meta_key] ?? [] ) ) );
+        if ( empty($values) ) continue;
         if ( $meta_key === 'prima_immatricolazione' ) {
-            /* Anno: LIKE '%YYYY' per ogni anno selezionato */
-            $year_group = [ 'relation' => 'OR' ];
-            foreach ( $values as $year ) {
-                $year_group[] = [ 'key' => $meta_key, 'value' => $year, 'compare' => 'LIKE' ];
-            }
-            $meta_query[] = $year_group;
+            $g = [ 'relation' => 'OR' ];
+            foreach ( $values as $y ) $g[] = [ 'key' => $meta_key, 'value' => $y, 'compare' => 'LIKE' ];
+            $meta_query[] = $g;
         } else {
             $meta_query[] = [ 'key' => $meta_key, 'value' => $values, 'compare' => 'IN' ];
         }
     }
 
-    /* Filtro range KM */
+    /* Range KM */
     $km_min = (int)( $_REQUEST['mecspe_km_min'] ?? 0 );
     $km_max = (int)( $_REQUEST['mecspe_km_max'] ?? 0 );
-    if ( $km_min > 0 || $km_max > 0 ) {
-        if ( $km_min > 0 && $km_max > 0 ) {
-            $meta_query[] = [ 'key' => 'km_percorsi', 'value' => [ $km_min, $km_max ], 'compare' => 'BETWEEN', 'type' => 'NUMERIC' ];
-        } elseif ( $km_min > 0 ) {
-            $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_min, 'compare' => '>=', 'type' => 'NUMERIC' ];
-        } else {
-            $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_max, 'compare' => '<=', 'type' => 'NUMERIC' ];
-        }
+    if ( $km_min > 0 && $km_max > 0 ) {
+        $meta_query[] = [ 'key' => 'km_percorsi', 'value' => [$km_min,$km_max], 'compare' => 'BETWEEN', 'type' => 'NUMERIC' ];
+    } elseif ( $km_min > 0 ) {
+        $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_min, 'compare' => '>=', 'type' => 'NUMERIC' ];
+    } elseif ( $km_max > 0 ) {
+        $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_max, 'compare' => '<=', 'type' => 'NUMERIC' ];
     }
 
-    if ( count( $meta_query ) > 1 ) $args['meta_query'] = $meta_query;
+    if ( count($meta_query) > 1 ) $args['meta_query'] = $meta_query;
 
     return $args;
 }
@@ -438,60 +433,19 @@ add_action( 'wp_ajax_mecspe_filter',        'mecspe_ajax_filter' );
 add_action( 'wp_ajax_nopriv_mecspe_filter', 'mecspe_ajax_filter' );
 function mecspe_ajax_filter() {
     check_ajax_referer( 'mecspe_filter_nonce', 'nonce' );
-
-    $per_page = 12;
-    $paged    = max( 1, (int)( $_REQUEST['paged'] ?? 1 ) );
-    $query    = new WP_Query( mecspe_build_query_args( $per_page, $paged ) );
-
+    $query = new WP_Query( mecspe_build_query_args( 12, max(1,(int)($_REQUEST['paged']??1)) ) );
     ob_start();
     mecspe_render_cards( $query );
-
-    wp_send_json_success( [
+    wp_send_json_success([
         'html'      => ob_get_clean(),
         'found'     => $query->found_posts,
         'max_pages' => $query->max_num_pages,
-        'paged'     => $paged,
-    ] );
+        'paged'     => (int)($_REQUEST['paged']??1),
+    ]);
 }
 
 /* =========================================================
-   9. DEBUG SHORTCODE  [mecspe_debug]  (solo admin)
+   9. FLUSH REWRITE
    ========================================================= */
-add_shortcode( 'mecspe_debug', function() {
-    if ( ! current_user_can( 'manage_options' ) ) return '';
-
-    $post = get_posts( [ 'post_type' => MECSPE_POST_TYPE, 'posts_per_page' => 1 ] );
-    if ( empty( $post ) ) return '<p>Nessun post trovato per il tipo: <strong>' . MECSPE_POST_TYPE . '</strong></p>';
-
-    $id   = $post[0]->ID;
-    $meta = get_post_meta( $id );
-    $taxs = get_object_taxonomies( MECSPE_POST_TYPE );
-
-    ob_start(); ?>
-    <div style="background:#f5f5f5;border:1px solid #ccc;padding:16px;font-family:monospace;font-size:13px;margin:20px 0">
-        <strong>DEBUG — Post ID <?php echo $id; ?> (<?php echo esc_html( $post[0]->post_title ); ?>)</strong>
-        <hr style="margin:10px 0">
-        <strong>META KEYS disponibili:</strong><br>
-        <?php foreach ( $meta as $key => $val ) : ?>
-            <span style="color:#006"><?php echo esc_html( $key ); ?></span>
-            = <?php echo esc_html( is_array($val) ? $val[0] : $val ); ?><br>
-        <?php endforeach; ?>
-        <hr style="margin:10px 0">
-        <strong>TASSONOMIE sul CPT:</strong><br>
-        <?php foreach ( $taxs as $t ) : ?>
-            <?php $terms = get_the_terms( $id, $t ); ?>
-            <span style="color:#006"><?php echo esc_html( $t ); ?></span>
-            = <?php echo $terms && !is_wp_error($terms) ? esc_html( implode(', ', wp_list_pluck($terms,'name')) ) : '(nessuno)'; ?><br>
-        <?php endforeach; ?>
-    </div>
-    <?php return ob_get_clean();
-} );
-
-/* =========================================================
-   10. FLUSH REWRITE
-   ========================================================= */
-register_activation_hook( __FILE__, function () {
-    mecspe_register_taxonomies();
-    flush_rewrite_rules();
-} );
+register_activation_hook( __FILE__, function() { mecspe_register_taxonomies(); flush_rewrite_rules(); } );
 register_deactivation_hook( __FILE__, 'flush_rewrite_rules' );
