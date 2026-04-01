@@ -489,3 +489,35 @@ function mecspe_ajax_filter() {
    ========================================================= */
 register_activation_hook( __FILE__, function() { mecspe_register_taxonomies(); flush_rewrite_rules(); } );
 register_deactivation_hook( __FILE__, 'flush_rewrite_rules' );
+
+/* =========================================================
+   10. DEBUG — shortcode [mecspe_debug] (da rimuovere dopo)
+   ========================================================= */
+add_shortcode( 'mecspe_debug', function() {
+    if ( ! current_user_can('administrator') ) return '';
+    $posts = get_posts(['post_type'=>MECSPE_POST_TYPE,'posts_per_page'=>1,'post_status'=>'publish']);
+    if ( empty($posts) ) return '<p>Nessun post prodotti trovato.</p>';
+    $id   = $posts[0]->ID;
+    $meta = get_post_meta( $id );
+    ob_start();
+    echo '<div style="font-family:monospace;font-size:12px;background:#f5f5f5;padding:16px;border:1px solid #ccc;max-height:600px;overflow:auto">';
+    echo '<strong>Post ID: ' . $id . ' — ' . esc_html(get_the_title($id)) . '</strong><br><br>';
+    echo '<strong>ACF get_field (campi semplici):</strong><br>';
+    foreach(['modello','targa','km_percorsi','prezzo','prima_immatricolazione','cavalli','trattativa_in_sede','veicolo_pronto','codice_interno'] as $k) {
+        $v = function_exists('get_field') ? get_field($k,$id) : '(ACF non attivo)';
+        echo esc_html($k) . ' = <em>' . (is_array($v)?json_encode($v):esc_html((string)$v)) . '</em><br>';
+    }
+    echo '<br><strong>ACF get_field (repeater):</strong><br>';
+    foreach(['marche','cabine','cambi','motori','allestimenti','tipi_offerta','equipaggiamenti','pneumatici','fender_laterali','elenco_spoiler','minigonne'] as $k) {
+        $v = function_exists('get_field') ? get_field($k,$id) : '(ACF non attivo)';
+        echo esc_html($k) . ' = <em>' . (is_array($v)?json_encode($v):esc_html((string)$v)) . '</em><br>';
+    }
+    echo '<br><strong>Tutti i meta nel DB (wp_postmeta):</strong><br>';
+    ksort($meta);
+    foreach ( $meta as $key => $vals ) {
+        if ( substr($key,0,1)==='_' ) continue; // nascondi chiavi interne ACF
+        echo esc_html($key) . ' = <em>' . esc_html( substr(implode(', ',$vals),0,120) ) . '</em><br>';
+    }
+    echo '</div>';
+    return ob_get_clean();
+} );
