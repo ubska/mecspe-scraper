@@ -234,6 +234,16 @@ function mecspe_render_cards( WP_Query $query ) {
         /* KM formattato */
         $km_fmt = $km ? number_format((float)preg_replace('/[^\d]/','',$km), 0, ',', '.') : '';
 
+        /* Fallback semplici con get_post_meta se ACF non restituisce nulla */
+        if ( ! $km )         $km         = get_post_meta($id, 'km_percorsi', true);
+        if ( ! $anno_raw )   $anno_raw   = get_post_meta($id, 'prima_immatricolazione', true);
+        if ( ! $cavalli )    $cavalli    = get_post_meta($id, 'cavalli', true);
+        if ( ! $prezzo )     $prezzo     = get_post_meta($id, 'prezzo', true);
+        if ( ! $trattativa ) $trattativa = get_post_meta($id, 'trattativa_in_sede', true);
+        if ( ! $modello )    $modello    = get_post_meta($id, 'modello', true);
+        if ( ! $targa )      $targa      = get_post_meta($id, 'targa', true);
+        if ( ! $cod )        $cod        = get_post_meta($id, 'codice_interno', true);
+
         /* Nome sopra immagine */
         $img_label = trim( ($marca ? $marca . ' ' : '') . ($modello ?: get_the_title()) );
         ?>
@@ -309,19 +319,32 @@ function mecspe_render_cards( WP_Query $query ) {
 function mecspe_first_repeater( int $id, string $field, string $subfield, bool $acf ): string {
     if ( $acf ) {
         $rows = get_field( $field, $id );
-        return ( is_array($rows) && ! empty($rows) ) ? ( $rows[0][$subfield] ?? '' ) : '';
+        if ( is_array($rows) && ! empty($rows) ) {
+            $row = $rows[0];
+            /* Prova vari nomi sub-campo */
+            return $row[$subfield] ?? $row['testo'] ?? $row['text'] ?? $row['nome'] ?? $row['name'] ?? $row['valore'] ?? array_values($row)[1] ?? array_values($row)[0] ?? '';
+        }
     }
-    return get_post_meta( $id, $field . '_0_' . $subfield, true ) ?: '';
+    /* Fallback: prova sia "testo" sia "text" nel meta key */
+    return get_post_meta( $id, $field.'_0_testo', true )
+        ?: get_post_meta( $id, $field.'_0_text',  true )
+        ?: get_post_meta( $id, $field.'_0_nome',  true )
+        ?: '';
 }
 
 function mecspe_get_meta_options( string $meta_key ): array {
     global $wpdb;
+    /* Cerca sia il key esatto sia varianti _testo/_text */
+    $keys = array_unique( [ $meta_key, preg_replace('/_testo$/', '_text', $meta_key), preg_replace('/_text$/', '_testo', $meta_key) ] );
+    $placeholders = implode(',', array_fill(0, count($keys), '%s'));
+    $query_args   = array_merge( $keys, [ MECSPE_POST_TYPE ] );
     $rows = $wpdb->get_col( $wpdb->prepare(
         "SELECT DISTINCT pm.meta_value FROM {$wpdb->postmeta} pm
          INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-         WHERE pm.meta_key = %s AND p.post_type = %s AND p.post_status = 'publish'
-           AND pm.meta_value != '' ORDER BY pm.meta_value ASC LIMIT 200",
-        $meta_key, MECSPE_POST_TYPE
+         WHERE pm.meta_key IN ($placeholders) AND p.post_type = %s AND p.post_status = 'publish'
+           AND pm.meta_value != '' AND LENGTH(pm.meta_value) < 100
+         ORDER BY pm.meta_value ASC LIMIT 200",
+        ...$query_args
     ) );
     return array_values( array_filter( $rows ) );
 }
