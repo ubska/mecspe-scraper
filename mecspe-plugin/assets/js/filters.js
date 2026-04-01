@@ -28,11 +28,12 @@
     /* ── Accordion sidebar ── */
     function initAccordion() {
         $(document).on('click', '.mecspe-acc-toggle', function () {
-            var $btn  = $(this);
-            var $body = $btn.next('.mecspe-acc-body');
-            var open  = $btn.hasClass('open');
-            $btn.toggleClass('open', !open);
+            var $toggle = $(this);
+            var $body   = $toggle.next('.mecspe-acc-body');
+            var open    = $toggle.hasClass('open');
+            $toggle.toggleClass('open', !open);
             $body.slideToggle(180);
+            $toggle.attr('aria-expanded', !open);
         });
     }
 

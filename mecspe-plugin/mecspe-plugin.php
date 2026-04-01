@@ -40,12 +40,24 @@ function mecspe_register_taxonomies() {
    ========================================================= */
 add_action( 'wp_enqueue_scripts', 'mecspe_enqueue_assets' );
 function mecspe_enqueue_assets() {
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.0' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.0', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.1' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.1', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
     ] );
+    /* CSS critico inline per battere qualsiasi tema */
+    wp_add_inline_style( 'mecspe-style', '
+        .mecspe-acc-toggle { display:flex!important; align-items:center!important; gap:8px!important; padding:10px 14px!important; font-size:13px!important; font-weight:700!important; color:#222!important; background:#fff!important; border-bottom:1px solid #e0e0e0!important; cursor:pointer!important; width:100%!important; box-sizing:border-box!important; }
+        .mecspe-acc-toggle span { color:#1a6eb5!important; font-size:18px!important; display:inline-block!important; transition:transform .2s!important; }
+        .mecspe-acc-toggle.open span { transform:rotate(90deg)!important; }
+        .mecspe-cb-label { display:flex!important; align-items:center!important; gap:7px!important; font-size:12.5px!important; color:#444!important; cursor:pointer!important; padding:3px 0!important; }
+        .mecspe-card-title a { color:#1a6eb5!important; text-decoration:none!important; font-size:17px!important; font-weight:700!important; }
+        .mecspe-select-sort { width:auto!important; max-width:200px!important; }
+        .mecspe-results-bar { display:flex!important; align-items:center!important; gap:10px!important; }
+        .mecspe-card-specs { display:grid!important; grid-template-columns:1fr 1fr!important; gap:5px 16px!important; }
+        .mecspe-spec { display:flex!important; align-items:center!important; gap:5px!important; font-size:12.5px!important; color:#444!important; }
+    ' );
 }
 
 /* =========================================================
@@ -123,9 +135,9 @@ function mecspe_render_archive( int $per_page = 12 ) {
 
                 <!-- Range KM -->
                 <div class="mecspe-acc-item">
-                    <button class="mecspe-acc-toggle" aria-expanded="false">
+                    <div class="mecspe-acc-toggle" role="button" aria-expanded="false">
                         <span>&#8250;</span> KM percorsi
-                    </button>
+                    </div>
                     <div class="mecspe-acc-body" style="display:none">
                         <div class="mecspe-km-range">
                             <input type="number" id="mecspe-km-min" class="mecspe-km-input" placeholder="Min" min="0" step="10000" value="<?php echo esc_attr($_GET['mecspe_km_min'] ?? ''); ?>">
@@ -140,9 +152,9 @@ function mecspe_render_archive( int $per_page = 12 ) {
                     $active = (array)( $_GET[ 'mf_' . $meta_key ] ?? [] );
                 ?>
                 <div class="mecspe-acc-item">
-                    <button class="mecspe-acc-toggle" aria-expanded="false">
+                    <div class="mecspe-acc-toggle" role="button" aria-expanded="false">
                         <span>&#8250;</span> <?php echo esc_html( $filter['label'] ); ?>
-                    </button>
+                    </div>
                     <div class="mecspe-acc-body" style="display:none">
                         <?php foreach ( $filter['options'] as $val ) : ?>
                         <label class="mecspe-cb-label">
@@ -209,40 +221,41 @@ function mecspe_render_cards( WP_Query $query ) {
         $id  = get_the_ID();
         $acf = function_exists('get_field');
 
-        $modello    = $acf ? get_field('modello', $id)                 : get_post_meta($id,'modello',true);
-        $km         = $acf ? get_field('km_percorsi', $id)             : get_post_meta($id,'km_percorsi',true);
-        $anno_raw   = $acf ? get_field('prima_immatricolazione', $id)  : get_post_meta($id,'prima_immatricolazione',true);
-        $cavalli    = $acf ? get_field('cavalli', $id)                 : get_post_meta($id,'cavalli',true);
-        $prezzo     = $acf ? get_field('prezzo', $id)                  : get_post_meta($id,'prezzo',true);
-        $trattativa = $acf ? get_field('trattativa_in_sede', $id)      : get_post_meta($id,'trattativa_in_sede',true);
-        $pronto     = $acf ? get_field('veicolo_pronto', $id)          : get_post_meta($id,'veicolo_pronto',true);
-        $targa      = $acf ? get_field('targa', $id)                   : get_post_meta($id,'targa',true);
-        $cod        = $acf ? get_field('codice_interno', $id)          : get_post_meta($id,'codice_interno',true);
+        /* Leggi tutti i campi — ACF prima, fallback get_post_meta */
+        $f = function( $key ) use ( $id, $acf ) {
+            $v = $acf ? get_field( $key, $id ) : null;
+            return ( $v !== null && $v !== '' && $v !== false ) ? $v : get_post_meta( $id, $key, true );
+        };
+        $modello  = $f('modello');
+        $km       = $f('km_percorsi');
+        $anno_raw = $f('prima_immatricolazione');
+        $cavalli  = $f('cavalli');
+        $prezzo   = $f('prezzo');
+        $targa    = $f('targa');
+        $cod      = $f('codice_interno');
+        $pronto   = $f('veicolo_pronto');
+        $raw_trat = $f('trattativa_in_sede');
+        $is_trattativa = in_array( $raw_trat, ['Sì', 'sì', '1', 1, true], true );
 
-        /* Repeater: prendi primo valore testo */
-        $marca    = mecspe_first_repeater( $id, 'marche',         'testo', $acf );
-        $cambio   = mecspe_first_repeater( $id, 'cambi',          'testo', $acf );
-        $motore   = mecspe_first_repeater( $id, 'motori',         'testo', $acf );
-        $cabina   = mecspe_first_repeater( $id, 'cabine',         'testo', $acf );
-        $allest   = mecspe_first_repeater( $id, 'allestimenti',   'testo', $acf );
-        $offerta  = mecspe_first_repeater( $id, 'tipi_offerta',   'testo', $acf );
+        /* Repeater ACF */
+        $marca   = mecspe_first_repeater( $id, 'marche',       'testo', $acf );
+        $cambio  = mecspe_first_repeater( $id, 'cambi',        'testo', $acf );
+        $motore  = mecspe_first_repeater( $id, 'motori',       'testo', $acf );
+        $cabina  = mecspe_first_repeater( $id, 'cabine',       'testo', $acf );
+        $allest  = mecspe_first_repeater( $id, 'allestimenti', 'testo', $acf );
+        $offerta = mecspe_first_repeater( $id, 'tipi_offerta', 'testo', $acf );
 
-        /* Anno: estrai solo anno numerico */
+        /* Anno: estrai 4 cifre da "Maggio 2019" */
         $anno = '';
         if ( $anno_raw && preg_match('/\d{4}/', $anno_raw, $m) ) $anno = $m[0];
 
-        /* KM formattato */
-        $km_fmt = $km ? number_format((float)preg_replace('/[^\d]/','',$km), 0, ',', '.') : '';
+        /* KM: rimuovi separatori italiani ("557.206" → 557206) */
+        $km_num = (int) preg_replace('/[^\d]/', '', $km);
+        $km_fmt = $km_num > 0 ? number_format( $km_num, 0, ',', '.' ) : '';
 
-        /* Fallback semplici con get_post_meta se ACF non restituisce nulla */
-        if ( ! $km )         $km         = get_post_meta($id, 'km_percorsi', true);
-        if ( ! $anno_raw )   $anno_raw   = get_post_meta($id, 'prima_immatricolazione', true);
-        if ( ! $cavalli )    $cavalli    = get_post_meta($id, 'cavalli', true);
-        if ( ! $prezzo )     $prezzo     = get_post_meta($id, 'prezzo', true);
-        if ( ! $trattativa ) $trattativa = get_post_meta($id, 'trattativa_in_sede', true);
-        if ( ! $modello )    $modello    = get_post_meta($id, 'modello', true);
-        if ( ! $targa )      $targa      = get_post_meta($id, 'targa', true);
-        if ( ! $cod )        $cod        = get_post_meta($id, 'codice_interno', true);
+        /* Prezzo: rimuovi separatori ("39.500" → 39500) */
+        $prezzo_num = (int) preg_replace('/[^\d]/', '', $prezzo);
+        $prezzo_fmt = $prezzo_num > 0 ? number_format( $prezzo_num, 0, ',', '.' ) : '';
 
         /* Nome sopra immagine */
         $img_label = trim( ($marca ? $marca . ' ' : '') . ($modello ?: get_the_title()) );
@@ -259,19 +272,15 @@ function mecspe_render_cards( WP_Query $query ) {
                         <div class="mecspe-card-no-img">Nessuna foto</div>
                     <?php endif; ?>
                 </a>
-                <!-- Badge sotto immagine -->
                 <div class="mecspe-card-badges">
                     <?php if ($km_fmt) : ?><span class="mecspe-badge">Km <?php echo esc_html($km_fmt); ?></span><?php endif; ?>
                     <?php if ($anno)   : ?><span class="mecspe-badge">Anno <?php echo esc_html($anno); ?></span><?php endif; ?>
                     <?php if ($motore) : ?><span class="mecspe-badge"><?php echo esc_html($motore); ?></span><?php endif; ?>
                 </div>
-                <!-- Prezzo / Trattativa -->
-                <?php if ($trattativa) : ?>
+                <?php if ($is_trattativa) : ?>
                 <div class="mecspe-card-trattativa">Trattativa Riservata</div>
-                <?php elseif ($prezzo) : ?>
-                <div class="mecspe-card-prezzo">
-                    Tuo a <strong>&euro; <?php echo esc_html(number_format((float)preg_replace('/[^\d]/','',$prezzo),0,',','.')); ?></strong>
-                </div>
+                <?php elseif ($prezzo_fmt) : ?>
+                <div class="mecspe-card-prezzo">Tuo a <strong>&euro; <?php echo esc_html($prezzo_fmt); ?></strong></div>
                 <?php endif; ?>
             </div>
 
@@ -284,11 +293,11 @@ function mecspe_render_cards( WP_Query $query ) {
                             <?php if ($offerta) : ?><span class="mecspe-usato-badge"><?php echo esc_html($offerta); ?></span><?php endif; ?>
                         </h2>
                         <p class="mecspe-card-subtitle">
-                            <?php echo esc_html( implode(' &nbsp;', array_filter([$cabina, $targa ? 'Rif: '.$targa : '', $cod ? 'Cod: '.$cod : ''])) ); ?>
+                            <?php echo esc_html( implode('  ', array_filter([$cabina, $targa ? 'Rif: '.$targa : ''])) ); ?>
                         </p>
                     </div>
-                    <?php if ($prezzo && !$trattativa) : ?>
-                    <div class="mecspe-card-price-top">&euro; <?php echo esc_html(number_format((float)preg_replace('/[^\d]/','',$prezzo),0,',','.')); ?></div>
+                    <?php if ($prezzo_fmt && !$is_trattativa) : ?>
+                    <div class="mecspe-card-price-top">&euro; <?php echo esc_html($prezzo_fmt); ?></div>
                     <?php endif; ?>
                 </div>
 

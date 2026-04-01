@@ -78,29 +78,30 @@
     border-bottom: 1px solid #ddd;
 }
 .mecspe-acc-toggle {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    width: 100% !important;
-    background: none !important;
-    border: none !important;
-    border-bottom: 1px solid #e0e0e0 !important;
-    padding: 10px 14px !important;
-    font-size: 13px !important;
-    font-weight: bold !important;
-    color: #222 !important;
-    cursor: pointer !important;
-    text-align: left !important;
-    line-height: 1.4 !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: #fff;
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #222;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
 }
 .mecspe-acc-toggle span {
-    font-size: 16px !important;
-    color: #1a6eb5 !important;
-    transition: transform .2s !important;
-    display: inline-block !important;
-    flex-shrink: 0 !important;
+    font-size: 18px;
+    color: #1a6eb5;
+    transition: transform .2s;
+    display: inline-block;
+    flex-shrink: 0;
+    line-height: 1;
 }
-.mecspe-acc-toggle.open span { transform: rotate(90deg) !important; }
+.mecspe-acc-toggle.open span { transform: rotate(90deg); }
 .mecspe-acc-body {
     padding: 6px 14px 12px;
     display: flex;
