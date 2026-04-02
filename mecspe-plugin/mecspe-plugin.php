@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.5
+ * Version:      2.0.6
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -14,6 +14,51 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 define( 'MECSPE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MECSPE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'MECSPE_POST_TYPE',  'prodotti' );
+
+/*
+ * MECSPE_ARCHIVE_SLUG = slug della pagina WordPress che contiene [mecspe_prodotti]
+ * Cambia questo valore se rinomini la pagina.
+ */
+define( 'MECSPE_ARCHIVE_SLUG', 'pagina-filtri' );
+
+/*
+ * Mappa slug URL pulito → valore del campo "Tipo offerta"
+ * Aggiungi o modifica le righe qui sotto per le tue categorie.
+ */
+function mecspe_slug_offerta_map(): array {
+    return [
+        'seminuovo-exrent'            => 'Seminuovo ExRent',
+        'usato-controllato-garantito' => 'Usato Controllato Garantito',
+        'usato-cgt-trucks'            => 'Usato CGT Trucks',
+        'usato-multimarca'            => 'Usato Multimarca',
+    ];
+}
+
+/* =========================================================
+   REWRITE RULES — URL puliti per categoria
+   /seminuovo-exrent/ → pagina-filtri + offerta pre-filtrata
+   ========================================================= */
+add_filter( 'query_vars', function( $vars ) {
+    $vars[] = 'mecspe_offerta';
+    return $vars;
+} );
+
+add_action( 'init', 'mecspe_add_rewrite_rules', 5 );
+function mecspe_add_rewrite_rules() {
+    foreach ( mecspe_slug_offerta_map() as $slug => $offerta ) {
+        add_rewrite_rule(
+            '^' . preg_quote( $slug, '/' ) . '/?$',
+            'index.php?pagename=' . MECSPE_ARCHIVE_SLUG . '&mecspe_offerta=' . rawurlencode( $offerta ),
+            'top'
+        );
+    }
+}
+
+/* Evita che WordPress faccia redirect canonical verso /pagina-filtri/ */
+add_filter( 'redirect_canonical', function( $redirect ) {
+    if ( get_query_var( 'mecspe_offerta' ) ) return false;
+    return $redirect;
+} );
 
 /* =========================================================
    1. TASSONOMIE AGGIUNTIVE (se non già registrate)
@@ -48,8 +93,8 @@ function mecspe_enqueue_assets() {
     );
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.5' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.5', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.6' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.6', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
@@ -84,8 +129,10 @@ function mecspe_shortcode( $atts ) {
    4. RENDER ARCHIVIO
    ========================================================= */
 function mecspe_render_archive( int $per_page = 12, string $offerta_preset = '' ) {
-    /* Priorità: attributo shortcode > parametro ?offerta= nell'URL */
-    $offerta_pre = $offerta_preset ?: sanitize_text_field( $_GET['offerta'] ?? '' );
+    /* Priorità: attributo shortcode > rewrite rule > parametro ?offerta= URL */
+    $offerta_pre = $offerta_preset
+        ?: sanitize_text_field( get_query_var( 'mecspe_offerta' ) )
+        ?: sanitize_text_field( $_GET['offerta'] ?? '' );
 
     $meta_filters = mecspe_get_meta_filters();
     $args  = mecspe_build_query_args( $per_page, 1, $offerta_pre );
@@ -404,8 +451,10 @@ function mecspe_build_query_args( int $per_page, int $paged = 1, string $offerta
 
     $meta_query = [ 'relation' => 'AND' ];
 
-    /* Parametro offerta: da attributo shortcode, ?offerta= URL, o AJAX */
-    $offerta_shortcut = $offerta_forced ?: sanitize_text_field( $_REQUEST['offerta'] ?? '' );
+    /* Parametro offerta: da shortcode, rewrite rule, ?offerta= URL, o AJAX */
+    $offerta_shortcut = $offerta_forced
+        ?: sanitize_text_field( get_query_var( 'mecspe_offerta' ) )
+        ?: sanitize_text_field( $_REQUEST['offerta'] ?? '' );
     if ( $offerta_shortcut ) {
         $meta_query[] = [
             'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
