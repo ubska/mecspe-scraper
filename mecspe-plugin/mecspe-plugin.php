@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.2
+ * Version:      2.0.3
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -48,8 +48,8 @@ function mecspe_enqueue_assets() {
     );
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.2' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.2', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.3' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.3', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
@@ -89,10 +89,10 @@ function mecspe_render_archive( int $per_page = 12 ) {
     $query = new WP_Query( $args );
 
     /* Opzioni per i dropdown in cima */
-    $dd_marca  = mecspe_get_meta_options( 'marche_0_testo' );
-    $dd_anno   = mecspe_get_year_options( 'prima_immatricolazione' );
-    $dd_cambio = mecspe_get_meta_options( 'cambi_0_testo' );
-    $dd_allest = mecspe_get_meta_options( 'allestimenti_0_testo' );
+    $dd_marca  = mecspe_get_meta_options( 'marca_prodotto_0_testo_marca' );
+    $dd_anno   = mecspe_get_year_options( 'prima_immatricolazione_prodotto' );
+    $dd_cambio = mecspe_get_meta_options( 'cambio_prodotto_0_testo_cambio' );
+    $dd_allest = mecspe_get_meta_options( 'allestimento_prodotto_0_testo_allestimento' );
 
     $sel_marca  = sanitize_text_field( $_GET['dd_marca']  ?? '' );
     $sel_anno   = sanitize_text_field( $_GET['dd_anno']   ?? '' );
@@ -229,29 +229,25 @@ function mecspe_render_cards( WP_Query $query ) {
         $id  = get_the_ID();
         $acf = function_exists('get_field');
 
-        /* Leggi tutti i campi — ACF prima, fallback get_post_meta */
-        $f = function( $key ) use ( $id, $acf ) {
-            $v = $acf ? get_field( $key, $id ) : null;
-            return ( $v !== null && $v !== '' && $v !== false ) ? $v : get_post_meta( $id, $key, true );
-        };
-        $modello  = $f('modello');
-        $km       = $f('km_percorsi');
-        $anno_raw = $f('prima_immatricolazione');
-        $cavalli  = $f('cavalli');
-        $prezzo   = $f('prezzo');
-        $targa    = $f('targa');
-        $cod      = $f('codice_interno');
-        $pronto   = $f('veicolo_pronto');
-        $raw_trat = $f('trattativa_in_sede');
+        /* Campi semplici (meta key con suffisso _prodotto) */
+        $modello  = get_post_meta( $id, 'modello_prodotto',               true );
+        $km       = get_post_meta( $id, 'km_percorsi_prodotto',           true );
+        $anno_raw = get_post_meta( $id, 'prima_immatricolazione_prodotto',true );
+        $cavalli  = get_post_meta( $id, 'cavalli_prodotto',               true );
+        $prezzo   = get_post_meta( $id, 'prezzo_prodotto',                true );
+        $targa    = get_post_meta( $id, 'targa_prodotto',                 true );
+        $cod      = get_post_meta( $id, 'codice_interno_prodotto',        true );
+        $pronto   = get_post_meta( $id, 'veicolo_pronto_prodotto',        true );
+        $raw_trat = get_post_meta( $id, 'trattativa_in_sede',             true );
         $is_trattativa = in_array( $raw_trat, ['Sì', 'sì', '1', 1, true], true );
 
-        /* Repeater ACF */
-        $marca   = mecspe_first_repeater( $id, 'marche',       'testo', $acf );
-        $cambio  = mecspe_first_repeater( $id, 'cambi',        'testo', $acf );
-        $motore  = mecspe_first_repeater( $id, 'motori',       'testo', $acf );
-        $cabina  = mecspe_first_repeater( $id, 'cabine',       'testo', $acf );
-        $allest  = mecspe_first_repeater( $id, 'allestimenti', 'testo', $acf );
-        $offerta = mecspe_first_repeater( $id, 'tipi_offerta', 'testo', $acf );
+        /* Repeater: formato {campo}_prodotto_0_testo_{campo} */
+        $marca   = get_post_meta( $id, 'marca_prodotto_0_testo_marca',                        true );
+        $cambio  = get_post_meta( $id, 'cambio_prodotto_0_testo_cambio',                      true );
+        $motore  = get_post_meta( $id, 'motore_prodotto_0_testo_motore',                      true );
+        $cabina  = get_post_meta( $id, 'cabina_prodotto_0_testo_cabina',                      true );
+        $allest  = get_post_meta( $id, 'allestimento_prodotto_0_testo_allestimento',          true );
+        $offerta = get_post_meta( $id, 'tipo_offerta_prodotto_0_testo_tipo_offerta',          true );
 
         /* Anno: estrai 4 cifre da "Maggio 2019" */
         $anno = '';
@@ -333,35 +329,15 @@ function mecspe_render_cards( WP_Query $query ) {
 /* =========================================================
    6. HELPERS META
    ========================================================= */
-function mecspe_first_repeater( int $id, string $field, string $subfield, bool $acf ): string {
-    if ( $acf ) {
-        $rows = get_field( $field, $id );
-        if ( is_array($rows) && ! empty($rows) ) {
-            $row = $rows[0];
-            /* Prova vari nomi sub-campo */
-            return $row[$subfield] ?? $row['testo'] ?? $row['text'] ?? $row['nome'] ?? $row['name'] ?? $row['valore'] ?? array_values($row)[1] ?? array_values($row)[0] ?? '';
-        }
-    }
-    /* Fallback: prova sia "testo" sia "text" nel meta key */
-    return get_post_meta( $id, $field.'_0_testo', true )
-        ?: get_post_meta( $id, $field.'_0_text',  true )
-        ?: get_post_meta( $id, $field.'_0_nome',  true )
-        ?: '';
-}
-
 function mecspe_get_meta_options( string $meta_key ): array {
     global $wpdb;
-    /* Cerca sia il key esatto sia varianti _testo/_text */
-    $keys = array_unique( [ $meta_key, preg_replace('/_testo$/', '_text', $meta_key), preg_replace('/_text$/', '_testo', $meta_key) ] );
-    $placeholders = implode(',', array_fill(0, count($keys), '%s'));
-    $query_args   = array_merge( $keys, [ MECSPE_POST_TYPE ] );
     $rows = $wpdb->get_col( $wpdb->prepare(
         "SELECT DISTINCT pm.meta_value FROM {$wpdb->postmeta} pm
          INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-         WHERE pm.meta_key IN ($placeholders) AND p.post_type = %s AND p.post_status = 'publish'
-           AND pm.meta_value != '' AND LENGTH(pm.meta_value) < 100
+         WHERE pm.meta_key = %s AND p.post_type = %s AND p.post_status = 'publish'
+           AND pm.meta_value != '' AND LENGTH(pm.meta_value) < 150
          ORDER BY pm.meta_value ASC LIMIT 200",
-        ...$query_args
+        $meta_key, MECSPE_POST_TYPE
     ) );
     return array_values( array_filter( $rows ) );
 }
@@ -379,22 +355,22 @@ function mecspe_get_year_options( string $meta_key ): array {
 
 function mecspe_get_meta_filters(): array {
     $groups = [
-        'marche_0_testo'          => 'Marca',
-        'prima_immatricolazione'  => 'Anno immatricolazione',
-        'cabine_0_testo'          => 'Cabina',
-        'cambi_0_testo'           => 'Cambio',
-        'allestimenti_0_testo'    => 'Allestimento',
-        'tipi_offerta_0_testo'    => 'Tipo offerta',
-        'motori_0_testo'          => 'Motore',
-        'equipaggiamenti_0_testo' => 'Equipaggiamento',
-        'pneumatici_0_testo'      => 'Pneumatici',
-        'fender_laterali_0_testo' => 'Fender laterale',
-        'elenco_spoiler_0_testo'  => 'Spoiler',
-        'minigonne_0_testo'       => 'Minigonne',
+        'marca_prodotto_0_testo_marca'                     => 'Marca',
+        'prima_immatricolazione_prodotto'                  => 'Anno immatricolazione',
+        'cabina_prodotto_0_testo_cabina'                   => 'Cabina',
+        'cambio_prodotto_0_testo_cambio'                   => 'Cambio',
+        'allestimento_prodotto_0_testo_allestimento'       => 'Allestimento',
+        'tipo_offerta_prodotto_0_testo_tipo_offerta'       => 'Tipo offerta',
+        'motore_prodotto_0_testo_motore'                   => 'Motore',
+        'equipaggiamento_prodotto_0_testo_equipaggiamento' => 'Equipaggiamento',
+        'pneumatici_prodotto_0_testo_pneumatici'           => 'Pneumatici',
+        'fender_laterale_prodotto_0_testo_fender'          => 'Fender laterale',
+        'spoiler_prodotto_0_testo_spoiler'                 => 'Spoiler',
+        'minigonne_prodotto_0_testo_minigonne'             => 'Minigonne',
     ];
     $result = [];
     foreach ( $groups as $key => $label ) {
-        $options = ( $key === 'prima_immatricolazione' )
+        $options = ( $key === 'prima_immatricolazione_prodotto' )
             ? mecspe_get_year_options( $key )
             : mecspe_get_meta_options( $key );
         if ( ! empty($options) ) $result[$key] = [ 'label' => $label, 'options' => $options ];
@@ -422,10 +398,10 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
 
     /* Dropdown top bar */
     $dd_map = [
-        'dd_marca'  => 'marche_0_testo',
-        'dd_anno'   => 'prima_immatricolazione',
-        'dd_cambio' => 'cambi_0_testo',
-        'dd_allest' => 'allestimenti_0_testo',
+        'dd_marca'  => 'marca_prodotto_0_testo_marca',
+        'dd_anno'   => 'prima_immatricolazione_prodotto',
+        'dd_cambio' => 'cambio_prodotto_0_testo_cambio',
+        'dd_allest' => 'allestimento_prodotto_0_testo_allestimento',
     ];
     foreach ( $dd_map as $param => $meta_key ) {
         $val = sanitize_text_field( $_REQUEST[$param] ?? '' );
@@ -441,7 +417,7 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
     foreach ( array_keys( mecspe_get_meta_filters() ) as $meta_key ) {
         $values = array_filter( array_map('sanitize_text_field', (array)( $_REQUEST['mf_'.$meta_key] ?? [] ) ) );
         if ( empty($values) ) continue;
-        if ( $meta_key === 'prima_immatricolazione' ) {
+        if ( $meta_key === 'prima_immatricolazione_prodotto' ) {
             $g = [ 'relation' => 'OR' ];
             foreach ( $values as $y ) $g[] = [ 'key' => $meta_key, 'value' => $y, 'compare' => 'LIKE' ];
             $meta_query[] = $g;
@@ -453,12 +429,14 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
     /* Range KM */
     $km_min = (int)( $_REQUEST['mecspe_km_min'] ?? 0 );
     $km_max = (int)( $_REQUEST['mecspe_km_max'] ?? 0 );
+    /* KM: il valore è in formato italiano "557.206" (punto = migliaia)
+       Convertiamo in numero intero per il confronto */
     if ( $km_min > 0 && $km_max > 0 ) {
-        $meta_query[] = [ 'key' => 'km_percorsi', 'value' => [$km_min,$km_max], 'compare' => 'BETWEEN', 'type' => 'NUMERIC' ];
+        $meta_query[] = [ 'key' => 'km_percorsi_prodotto', 'value' => [$km_min,$km_max], 'compare' => 'BETWEEN', 'type' => 'NUMERIC' ];
     } elseif ( $km_min > 0 ) {
-        $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_min, 'compare' => '>=', 'type' => 'NUMERIC' ];
+        $meta_query[] = [ 'key' => 'km_percorsi_prodotto', 'value' => $km_min, 'compare' => '>=', 'type' => 'NUMERIC' ];
     } elseif ( $km_max > 0 ) {
-        $meta_query[] = [ 'key' => 'km_percorsi', 'value' => $km_max, 'compare' => '<=', 'type' => 'NUMERIC' ];
+        $meta_query[] = [ 'key' => 'km_percorsi_prodotto', 'value' => $km_max, 'compare' => '<=', 'type' => 'NUMERIC' ];
     }
 
     if ( count($meta_query) > 1 ) $args['meta_query'] = $meta_query;
