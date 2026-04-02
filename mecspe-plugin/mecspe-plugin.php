@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.3
+ * Version:      2.0.4
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -48,8 +48,8 @@ function mecspe_enqueue_assets() {
     );
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.3' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.3', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.4' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.4', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
@@ -84,6 +84,9 @@ function mecspe_shortcode( $atts ) {
    4. RENDER ARCHIVIO
    ========================================================= */
 function mecspe_render_archive( int $per_page = 12 ) {
+    /* Parametro ?offerta=Usato+CGT+Trucks per pre-filtro da pagina categoria */
+    $offerta_pre = sanitize_text_field( $_GET['offerta'] ?? '' );
+
     $meta_filters = mecspe_get_meta_filters();
     $args  = mecspe_build_query_args( $per_page );
     $query = new WP_Query( $args );
@@ -158,12 +161,17 @@ function mecspe_render_archive( int $per_page = 12 ) {
                 <?php foreach ( $meta_filters as $meta_key => $filter ) :
                     if ( empty( $filter['options'] ) ) continue;
                     $active = (array)( $_GET[ 'mf_' . $meta_key ] ?? [] );
+                    /* Pre-spunta dal parametro ?offerta= per il filtro tipo_offerta */
+                    if ( $meta_key === 'tipo_offerta_prodotto_0_testo_tipo_offerta' && $offerta_pre && empty($active) ) {
+                        $active = [ $offerta_pre ];
+                    }
+                    $is_open = ! empty( $active );
                 ?>
                 <div class="mecspe-acc-item">
-                    <div class="mecspe-acc-toggle" role="button" aria-expanded="false">
+                    <div class="mecspe-acc-toggle<?php echo $is_open ? ' open' : ''; ?>" role="button" aria-expanded="<?php echo $is_open ? 'true' : 'false'; ?>">
                         <span>&#8250;</span> <?php echo esc_html( $filter['label'] ); ?>
                     </div>
-                    <div class="mecspe-acc-body" style="display:none">
+                    <div class="mecspe-acc-body" style="<?php echo $is_open ? '' : 'display:none'; ?>"><?php // phpcs:ignore ?>
                         <?php foreach ( $filter['options'] as $val ) : ?>
                         <label class="mecspe-cb-label">
                             <input type="checkbox"
@@ -395,6 +403,16 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
     $args['order']   = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
 
     $meta_query = [ 'relation' => 'AND' ];
+
+    /* Parametro ?offerta= (shortcut da pulsanti categoria) */
+    $offerta_shortcut = sanitize_text_field( $_REQUEST['offerta'] ?? '' );
+    if ( $offerta_shortcut ) {
+        $meta_query[] = [
+            'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
+            'value'   => $offerta_shortcut,
+            'compare' => '=',
+        ];
+    }
 
     /* Dropdown top bar */
     $dd_map = [

@@ -4,6 +4,10 @@
 (function ($) {
     'use strict';
 
+    /* Leggi ?offerta= dall'URL per mantenerlo nelle chiamate AJAX */
+    var urlParams   = new URLSearchParams(window.location.search);
+    var offertaInit = urlParams.get('offerta') || '';
+
     var state = { order: 'title-ASC', taxes: {}, paged: 1, maxPages: 1, loading: false };
     var $wrap, $list, $count, $loadMore, $pagination;
 
@@ -15,6 +19,9 @@
         $loadMore   = $('#mecspe-load-more');
         $pagination = $('#mecspe-pagination');
         state.maxPages = parseInt($loadMore.data('max') || 1, 10);
+
+        /* Leggi i checkbox già spuntati (pre-filtro da PHP) */
+        rebuildTaxes();
 
         initAccordion();
         initOrderby();
