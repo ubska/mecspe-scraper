@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.4
+ * Version:      2.0.5
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -48,8 +48,8 @@ function mecspe_enqueue_assets() {
     );
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.4' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.4', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.5' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.5', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
@@ -74,21 +74,21 @@ function mecspe_enqueue_assets() {
 add_shortcode( 'mecspe_prodotti',   'mecspe_shortcode' );
 add_shortcode( 'mecspe_espositori', 'mecspe_shortcode' );
 function mecspe_shortcode( $atts ) {
-    $atts = shortcode_atts( [ 'per_page' => 12 ], $atts );
+    $atts = shortcode_atts( [ 'per_page' => 12, 'offerta' => '' ], $atts );
     ob_start();
-    mecspe_render_archive( (int) $atts['per_page'] );
+    mecspe_render_archive( (int) $atts['per_page'], sanitize_text_field( $atts['offerta'] ) );
     return ob_get_clean();
 }
 
 /* =========================================================
    4. RENDER ARCHIVIO
    ========================================================= */
-function mecspe_render_archive( int $per_page = 12 ) {
-    /* Parametro ?offerta=Usato+CGT+Trucks per pre-filtro da pagina categoria */
-    $offerta_pre = sanitize_text_field( $_GET['offerta'] ?? '' );
+function mecspe_render_archive( int $per_page = 12, string $offerta_preset = '' ) {
+    /* Priorità: attributo shortcode > parametro ?offerta= nell'URL */
+    $offerta_pre = $offerta_preset ?: sanitize_text_field( $_GET['offerta'] ?? '' );
 
     $meta_filters = mecspe_get_meta_filters();
-    $args  = mecspe_build_query_args( $per_page );
+    $args  = mecspe_build_query_args( $per_page, 1, $offerta_pre );
     $query = new WP_Query( $args );
 
     /* Opzioni per i dropdown in cima */
@@ -389,7 +389,7 @@ function mecspe_get_meta_filters(): array {
 /* =========================================================
    7. QUERY ARGS
    ========================================================= */
-function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
+function mecspe_build_query_args( int $per_page, int $paged = 1, string $offerta_forced = '' ): array {
     $args = [
         'post_type'      => MECSPE_POST_TYPE,
         'posts_per_page' => $per_page,
@@ -404,8 +404,8 @@ function mecspe_build_query_args( int $per_page, int $paged = 1 ): array {
 
     $meta_query = [ 'relation' => 'AND' ];
 
-    /* Parametro ?offerta= (shortcut da pulsanti categoria) */
-    $offerta_shortcut = sanitize_text_field( $_REQUEST['offerta'] ?? '' );
+    /* Parametro offerta: da attributo shortcode, ?offerta= URL, o AJAX */
+    $offerta_shortcut = $offerta_forced ?: sanitize_text_field( $_REQUEST['offerta'] ?? '' );
     if ( $offerta_shortcut ) {
         $meta_query[] = [
             'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
