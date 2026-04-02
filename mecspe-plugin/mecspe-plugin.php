@@ -64,7 +64,7 @@ function mecspe_enqueue_assets() {
         .mecspe-select-sort { width:auto!important; max-width:200px!important; }
         .mecspe-results-bar { display:flex!important; align-items:center!important; gap:10px!important; }
         .mecspe-card-specs { display:grid!important; grid-template-columns:1fr 1fr!important; gap:5px 16px!important; }
-        .mecspe-spec { display:flex!important; align-items:center!important; gap:5px!important; font-size:12.5px!important; color:#444!important; }
+        .mecspe-btn-dettagli { background:#1a6eb5!important; color:#fff!important; text-decoration:none!important; }
     ' );
 }
 
