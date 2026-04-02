@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.6
+ * Version:      2.0.7
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -15,28 +15,93 @@ define( 'MECSPE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MECSPE_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'MECSPE_POST_TYPE',  'prodotti' );
 
-/*
- * MECSPE_ARCHIVE_SLUG = slug della pagina WordPress che contiene [mecspe_prodotti]
- * Cambia questo valore se rinomini la pagina.
- */
-define( 'MECSPE_ARCHIVE_SLUG', 'pagina-filtri' );
+/* Legge lo slug della pagina archivio dalle impostazioni (default: pagina-filtri) */
+function mecspe_archive_slug(): string {
+    return sanitize_title( get_option( 'mecspe_archive_slug', 'pagina-filtri' ) );
+}
 
-/*
- * Mappa slug URL pulito → valore del campo "Tipo offerta"
- * Aggiungi o modifica le righe qui sotto per le tue categorie.
- */
+/* Legge la mappa slug→offerta dalle impostazioni */
 function mecspe_slug_offerta_map(): array {
-    return [
-        'seminuovo-exrent'            => 'Seminuovo ExRent',
-        'usato-controllato-garantito' => 'Usato Controllato Garantito',
-        'usato-cgt-trucks'            => 'Usato CGT Trucks',
-        'usato-multimarca'            => 'Usato Multimarca',
-    ];
+    $saved = get_option( 'mecspe_slug_map', '' );
+    if ( ! $saved ) {
+        return [
+            'seminuovo-exrent'            => 'Seminuovo ExRent',
+            'usato-controllato-garantito' => 'Usato Controllato Garantito',
+            'usato-cgt-trucks'            => 'Usato CGT Trucks',
+            'usato-multimarca'            => 'Usato Multimarca',
+        ];
+    }
+    $map = [];
+    foreach ( explode( "\n", $saved ) as $line ) {
+        $line = trim( $line );
+        if ( ! $line || ! str_contains( $line, '=' ) ) continue;
+        [ $slug, $offerta ] = array_map( 'trim', explode( '=', $line, 2 ) );
+        if ( $slug && $offerta ) $map[ sanitize_title($slug) ] = $offerta;
+    }
+    return $map;
+}
+
+/* =========================================================
+   PAGINA IMPOSTAZIONI ADMIN
+   ========================================================= */
+add_action( 'admin_menu', function() {
+    add_options_page( 'MECSPE Prodotti', 'MECSPE Prodotti', 'manage_options', 'mecspe-settings', 'mecspe_settings_page' );
+} );
+
+add_action( 'admin_init', function() {
+    register_setting( 'mecspe_settings', 'mecspe_archive_slug', [ 'sanitize_callback' => 'sanitize_title' ] );
+    register_setting( 'mecspe_settings', 'mecspe_slug_map',     [ 'sanitize_callback' => 'sanitize_textarea_field' ] );
+} );
+
+/* Dopo il salvataggio delle impostazioni, flush rewrite rules */
+add_action( 'update_option_mecspe_archive_slug', function() { flush_rewrite_rules(); } );
+add_action( 'update_option_mecspe_slug_map',     function() { flush_rewrite_rules(); } );
+
+function mecspe_settings_page() {
+    if ( ! current_user_can( 'manage_options' ) ) return;
+    $saved_slug = get_option( 'mecspe_archive_slug', 'pagina-filtri' );
+    $saved_map  = get_option( 'mecspe_slug_map', "seminuovo-exrent = Seminuovo ExRent\nusato-controllato-garantito = Usato Controllato Garantito\nusato-cgt-trucks = Usato CGT Trucks\nusato-multimarca = Usato Multimarca" );
+    ?>
+    <div class="wrap">
+        <h1>MECSPE Prodotti — Impostazioni</h1>
+        <form method="post" action="options.php">
+            <?php settings_fields( 'mecspe_settings' ); ?>
+            <table class="form-table">
+                <tr>
+                    <th><label for="mecspe_archive_slug">Pagina archivio veicoli</label></th>
+                    <td>
+                        <select name="mecspe_archive_slug" id="mecspe_archive_slug">
+                            <?php
+                            foreach ( get_pages() as $page ) {
+                                $slug = $page->post_name;
+                                echo '<option value="' . esc_attr($slug) . '"' . selected($saved_slug, $slug, false) . '>'
+                                   . esc_html( $page->post_title ) . ' (/' . esc_html($slug) . '/)</option>';
+                            }
+                            ?>
+                        </select>
+                        <p class="description">Seleziona la pagina che contiene lo shortcode <code>[mecspe_prodotti]</code></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="mecspe_slug_map">URL categorie → Tipo offerta</label></th>
+                    <td>
+                        <textarea name="mecspe_slug_map" id="mecspe_slug_map" rows="10" cols="60" class="large-text"><?php echo esc_textarea( $saved_map ); ?></textarea>
+                        <p class="description">
+                            Una riga per categoria: <code>slug-url = Valore Tipo Offerta</code><br>
+                            Esempio: <code>seminuovo-exrent = Seminuovo ExRent</code><br>
+                            Dopo il salvataggio i permalink si aggiornano automaticamente.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button( 'Salva impostazioni' ); ?>
+        </form>
+    </div>
+    <?php
 }
 
 /* =========================================================
    REWRITE RULES — URL puliti per categoria
-   /seminuovo-exrent/ → pagina-filtri + offerta pre-filtrata
    ========================================================= */
 add_filter( 'query_vars', function( $vars ) {
     $vars[] = 'mecspe_offerta';
@@ -45,16 +110,17 @@ add_filter( 'query_vars', function( $vars ) {
 
 add_action( 'init', 'mecspe_add_rewrite_rules', 5 );
 function mecspe_add_rewrite_rules() {
+    $archive = mecspe_archive_slug();
     foreach ( mecspe_slug_offerta_map() as $slug => $offerta ) {
         add_rewrite_rule(
             '^' . preg_quote( $slug, '/' ) . '/?$',
-            'index.php?pagename=' . MECSPE_ARCHIVE_SLUG . '&mecspe_offerta=' . rawurlencode( $offerta ),
+            'index.php?pagename=' . $archive . '&mecspe_offerta=' . rawurlencode( $offerta ),
             'top'
         );
     }
 }
 
-/* Evita che WordPress faccia redirect canonical verso /pagina-filtri/ */
+/* Evita che WordPress faccia redirect canonical verso la pagina archivio */
 add_filter( 'redirect_canonical', function( $redirect ) {
     if ( get_query_var( 'mecspe_offerta' ) ) return false;
     return $redirect;
@@ -93,8 +159,8 @@ function mecspe_enqueue_assets() {
     );
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.6' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.6', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.7' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.7', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
