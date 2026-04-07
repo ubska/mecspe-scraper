@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.7
+ * Version:      2.0.8
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -151,16 +151,28 @@ function mecspe_register_taxonomies() {
    ========================================================= */
 add_action( 'wp_enqueue_scripts', 'mecspe_enqueue_assets' );
 function mecspe_enqueue_assets() {
-    /* Carica solo sulle pagine che contengono lo shortcode */
     global $post;
-    $has_sc = is_a( $post, 'WP_Post' ) && (
-        has_shortcode( $post->post_content, 'mecspe_prodotti' ) ||
-        has_shortcode( $post->post_content, 'mecspe_espositori' )
-    );
+    if ( ! is_a( $post, 'WP_Post' ) ) return;
+
+    /* Controlla shortcode nel contenuto normale */
+    $has_sc = has_shortcode( $post->post_content, 'mecspe_prodotti' )
+           || has_shortcode( $post->post_content, 'mecspe_espositori' );
+
+    /* Controlla anche dentro i dati Elementor (lo shortcode è in un widget) */
+    if ( ! $has_sc ) {
+        $el_data = get_post_meta( $post->ID, '_elementor_data', true );
+        $has_sc  = $el_data && strpos( $el_data, 'mecspe_prodotti' ) !== false;
+    }
+
+    /* Controlla se è una pagina di categoria con rewrite rule attivo */
+    if ( ! $has_sc ) {
+        $has_sc = (bool) get_query_var( 'mecspe_offerta' );
+    }
+
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.7' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.7', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.8' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.8', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
