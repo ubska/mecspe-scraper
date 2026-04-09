@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.9
+ * Version:      2.1.0
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -171,8 +171,8 @@ function mecspe_enqueue_assets() {
 
     if ( ! $has_sc ) return;
 
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.0.8' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.0.8', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.1.0' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.1.0', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
@@ -288,7 +288,7 @@ function mecspe_render_archive( int $per_page = 12, string $offerta_preset = '' 
                     $active = (array)( $_GET[ 'mf_' . $meta_key ] ?? [] );
                     /* Pre-spunta dal parametro offerta= (anche multiplo, es. "Val1,Val2") */
                     if ( $meta_key === 'tipo_offerta_prodotto_0_testo_tipo_offerta' && $offerta_pre && empty($active) ) {
-                        $active = array_filter( array_map( 'trim', explode( ',', $offerta_pre ) ) );
+                        $active = array_values( array_filter( array_map( 'trim', preg_split( '/[,|]+/', $offerta_pre ) ) ) );
                     }
                     $is_open = ! empty( $active );
                 ?>
@@ -535,14 +535,15 @@ function mecspe_build_query_args( int $per_page, int $paged = 1, string $offerta
         ?: sanitize_text_field( get_query_var( 'mecspe_offerta' ) )
         ?: sanitize_text_field( $_REQUEST['offerta'] ?? '' );
     if ( $offerta_shortcut ) {
-        $offerta_values = array_filter( array_map( 'trim', explode( ',', $offerta_shortcut ) ) );
+        /* Supporta sia virgola che pipe come separatore: offerta="Val1|Val2" o "Val1,Val2" */
+        $offerta_values = array_values( array_filter( array_map( 'trim', preg_split( '/[,|]+/', $offerta_shortcut ) ) ) );
         if ( count( $offerta_values ) === 1 ) {
             $meta_query[] = [
                 'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
-                'value'   => reset( $offerta_values ),
+                'value'   => $offerta_values[0],
                 'compare' => '=',
             ];
-        } else {
+        } elseif ( count( $offerta_values ) > 1 ) {
             $meta_query[] = [
                 'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
                 'value'   => $offerta_values,
