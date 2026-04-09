@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.1.0
+ * Version:      2.1.1
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -151,33 +151,13 @@ function mecspe_register_taxonomies() {
    ========================================================= */
 add_action( 'wp_enqueue_scripts', 'mecspe_enqueue_assets' );
 function mecspe_enqueue_assets() {
-    global $post;
-    if ( ! is_a( $post, 'WP_Post' ) ) return;
-
-    /* Controlla shortcode nel contenuto normale */
-    $has_sc = has_shortcode( $post->post_content, 'mecspe_prodotti' )
-           || has_shortcode( $post->post_content, 'mecspe_espositori' );
-
-    /* Controlla anche dentro i dati Elementor (lo shortcode è in un widget) */
-    if ( ! $has_sc ) {
-        $el_data = get_post_meta( $post->ID, '_elementor_data', true );
-        $has_sc  = $el_data && strpos( $el_data, 'mecspe_prodotti' ) !== false;
-    }
-
-    /* Controlla se è una pagina di categoria con rewrite rule attivo */
-    if ( ! $has_sc ) {
-        $has_sc = (bool) get_query_var( 'mecspe_offerta' );
-    }
-
-    if ( ! $has_sc ) return;
-
-    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.1.0' );
-    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.1.0', true );
+    wp_enqueue_style(  'mecspe-style',   MECSPE_PLUGIN_URL . 'assets/css/style.css',   [], '2.1.1' );
+    wp_enqueue_script( 'mecspe-filters', MECSPE_PLUGIN_URL . 'assets/js/filters.js', ['jquery'], '2.1.1', true );
     wp_localize_script( 'mecspe-filters', 'MecspeAjax', [
         'ajaxurl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'mecspe_filter_nonce' ),
     ] );
-    /* CSS critico inline per battere qualsiasi tema */
+    /* CSS critico inline per battere qualsiasi tema/Elementor */
     wp_add_inline_style( 'mecspe-style', '
         .mecspe-acc-toggle { display:flex!important; align-items:center!important; gap:8px!important; padding:10px 14px!important; font-size:13px!important; font-weight:700!important; color:#222!important; background:#fff!important; border-bottom:1px solid #e0e0e0!important; cursor:pointer!important; width:100%!important; box-sizing:border-box!important; }
         .mecspe-acc-toggle span { color:#1a6eb5!important; font-size:18px!important; display:inline-block!important; transition:transform .2s!important; }
@@ -188,6 +168,11 @@ function mecspe_enqueue_assets() {
         .mecspe-results-bar { display:flex!important; align-items:center!important; gap:10px!important; }
         .mecspe-card-specs { display:grid!important; grid-template-columns:1fr 1fr!important; gap:5px 16px!important; }
         .mecspe-btn-dettagli { background:#1a6eb5!important; color:#fff!important; text-decoration:none!important; }
+        .mecspe-card { display:flex!important; background:#fff!important; border:1px solid #ccc!important; overflow:hidden!important; }
+        .mecspe-card-left { width:230px!important; flex-shrink:0!important; display:flex!important; flex-direction:column!important; border-right:1px solid #ddd!important; }
+        .mecspe-card-right { flex:1!important; display:flex!important; flex-direction:column!important; padding:12px 14px!important; min-width:0!important; }
+        .mecspe-list { display:flex!important; flex-direction:column!important; gap:14px!important; }
+        .mecspe-layout { display:grid!important; grid-template-columns:260px 1fr!important; gap:16px!important; align-items:start!important; }
     ' );
 }
 
