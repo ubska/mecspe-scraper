@@ -3,7 +3,7 @@
  * Plugin Name:  MECSPE Prodotti
  * Plugin URI:   https://github.com/ubska/mecspe-scraper
  * Description:  Visualizza i veicoli usati con filtri dropdown, sidebar e card orizzontali.
- * Version:      2.0.8
+ * Version:      2.0.9
  * Author:       MECSPE Scraper
  * Text Domain:  mecspe-plugin
  * License:      GPL-2.0+
@@ -286,9 +286,9 @@ function mecspe_render_archive( int $per_page = 12, string $offerta_preset = '' 
                 <?php foreach ( $meta_filters as $meta_key => $filter ) :
                     if ( empty( $filter['options'] ) ) continue;
                     $active = (array)( $_GET[ 'mf_' . $meta_key ] ?? [] );
-                    /* Pre-spunta dal parametro ?offerta= per il filtro tipo_offerta */
+                    /* Pre-spunta dal parametro offerta= (anche multiplo, es. "Val1,Val2") */
                     if ( $meta_key === 'tipo_offerta_prodotto_0_testo_tipo_offerta' && $offerta_pre && empty($active) ) {
-                        $active = [ $offerta_pre ];
+                        $active = array_filter( array_map( 'trim', explode( ',', $offerta_pre ) ) );
                     }
                     $is_open = ! empty( $active );
                 ?>
@@ -529,16 +529,26 @@ function mecspe_build_query_args( int $per_page, int $paged = 1, string $offerta
 
     $meta_query = [ 'relation' => 'AND' ];
 
-    /* Parametro offerta: da shortcode, rewrite rule, ?offerta= URL, o AJAX */
+    /* Parametro offerta: da shortcode, rewrite rule, ?offerta= URL, o AJAX
+       Supporta più valori separati da virgola: offerta="Val1,Val2" */
     $offerta_shortcut = $offerta_forced
         ?: sanitize_text_field( get_query_var( 'mecspe_offerta' ) )
         ?: sanitize_text_field( $_REQUEST['offerta'] ?? '' );
     if ( $offerta_shortcut ) {
-        $meta_query[] = [
-            'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
-            'value'   => $offerta_shortcut,
-            'compare' => '=',
-        ];
+        $offerta_values = array_filter( array_map( 'trim', explode( ',', $offerta_shortcut ) ) );
+        if ( count( $offerta_values ) === 1 ) {
+            $meta_query[] = [
+                'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
+                'value'   => reset( $offerta_values ),
+                'compare' => '=',
+            ];
+        } else {
+            $meta_query[] = [
+                'key'     => 'tipo_offerta_prodotto_0_testo_tipo_offerta',
+                'value'   => $offerta_values,
+                'compare' => 'IN',
+            ];
+        }
     }
 
     /* Dropdown top bar */
